@@ -1,0 +1,32 @@
+# A `sequence` diagram: actors as columns, messages in time order.
+id: login-flow
+title: Login request, happy path
+layout: sequence
+note: What actually happens between "submit" and the session cookie landing.
+
+actors:
+  - id: client
+    label: Browser
+  - id: api
+    label: auth-api
+  - id: db
+    label: users db
+
+messages:
+  - from: client
+    to: api
+    label: POST /login {email, password}
+  - from: api
+    to: db
+    label: SELECT by email
+  - from: db
+    to: api
+    label: user row
+    style: return
+  - from: api
+    to: api
+    label: bcrypt compare
+  - from: api
+    to: client
+    label: 200, Set-Cookie session
+    style: return

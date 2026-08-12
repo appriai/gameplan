@@ -1,5 +1,5 @@
 import { SceneBuilder } from "./elements.js";
-import type { ExcalidrawElement, ExcalidrawScene } from "./excalidraw.js";
+import type { ExcalidrawScene } from "./excalidraw.js";
 import { layoutGoal } from "./layout/goal.js";
 import { layoutSteps } from "./layout/steps.js";
 import { layoutForks } from "./layout/forks.js";
@@ -9,30 +9,11 @@ import { layoutLegend } from "./layout/legend.js";
 import type { PlanSpec } from "./spec.js";
 import { CANVAS_WIDTH, type RegionCtx } from "./layout/common.js";
 import { METRICS } from "./theme.js";
+import { buildSnapshot, type Snapshot } from "./snapshot.js";
 
 export interface RenderOptions {
   /** fixed clock, so an unchanged spec renders byte-identically */
   now?: number;
-}
-
-/** A point-in-time record of what we generated, for later diffing. */
-export interface Snapshot {
-  planId: string;
-  revision: number;
-  renderedAt: number;
-  elements: Record<
-    string,
-    {
-      role: string;
-      nodeId?: string;
-      ordinal?: number;
-      x: number;
-      y: number;
-      width: number;
-      height: number;
-      text?: string;
-    }
-  >;
 }
 
 export interface RenderResult {
@@ -100,34 +81,4 @@ export function renderPlan(spec: PlanSpec, options: RenderOptions = {}): RenderR
     },
     snapshot: buildSnapshot(spec, now, elements),
   };
-}
-
-function buildSnapshot(
-  spec: PlanSpec,
-  now: number,
-  elements: ExcalidrawElement[],
-): Snapshot {
-  const snapshot: Snapshot = {
-    planId: spec.id,
-    revision: spec.revision,
-    renderedAt: now,
-    elements: {},
-  };
-  for (const el of elements) {
-    const meta = el.customData?.gameplan;
-    if (!meta) continue;
-    snapshot.elements[el.id] = {
-      role: meta.role,
-      ...(meta.nodeId !== undefined ? { nodeId: meta.nodeId } : {}),
-      ...(meta.ordinal !== undefined ? { ordinal: meta.ordinal } : {}),
-      x: el.x,
-      y: el.y,
-      width: el.width,
-      height: el.height,
-      ...("originalText" in el
-        ? { text: (el as { originalText: string }).originalText }
-        : {}),
-    };
-  }
-  return snapshot;
 }

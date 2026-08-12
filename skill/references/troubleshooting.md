@@ -78,3 +78,11 @@ every human annotation. Bump `revision` so reviewers can see the plan changed.
 Element ids are derived deterministically from the plan id and each node's logical key, so
 annotations anchored to a step stay anchored across revisions — as long as you don't rename the
 step's `id`. Renaming an id orphans the notes attached to it.
+
+## Plans and diagrams with the same id
+
+A plan and a diagram can use the same `id` string without colliding — they're stored under
+separate namespaces (`.gameplan/<id>/` for plans, `.gameplan/diagrams/<id>/` for diagrams) and
+served at different paths (`/p/<id>` vs `/d/<id>`). `gameplan wait` / `feedback` / `open` check
+the plan namespace first, so if you deliberately gave a diagram the same id as a plan, address
+it by its full URL instead of relying on auto-detection.

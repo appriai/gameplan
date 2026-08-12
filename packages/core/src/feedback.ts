@@ -7,7 +7,7 @@ import {
   type ExcalidrawElement,
   type ExcalidrawScene,
 } from "./excalidraw.js";
-import type { Snapshot } from "./render.js";
+import type { Snapshot } from "./snapshot.js";
 import { INTENT_BY_BG, INTENT_BY_STROKE, type Intent } from "./theme.js";
 
 /**
@@ -28,6 +28,8 @@ const ANCHORABLE_ROLES = new Set([
   "criterion",
   "out-of-scope",
   "goal",
+  "diagram-node",
+  "cluster",
 ]);
 
 /** Beyond this distance a floating sticky is treated as a region comment. */

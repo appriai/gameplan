@@ -1,0 +1,50 @@
+# A `graph` diagram: boxes and arrows, auto-laid-out left to right.
+# Clusters group nodes visually — here, everything inside the auth service.
+id: system-architecture
+title: How auth fits into the system
+layout: graph
+direction: LR
+note: For onboarding — not tied to any particular plan.
+
+clusters:
+  - id: auth-service
+    label: auth-service (own repo)
+
+nodes:
+  - id: browser
+    label: Browser
+    icon: none
+    color: ink
+  - id: gateway
+    label: API gateway
+    icon: file
+    color: blue
+    note: Terminates TLS, routes by path
+  - id: auth-api
+    label: auth-api
+    icon: file
+    color: blue
+    cluster: auth-service
+  - id: sessions
+    label: sessions.db
+    icon: file
+    color: green
+    cluster: auth-service
+    note: Redis, 15min TTL
+  - id: users-db
+    label: users
+    icon: file
+    color: grey
+    note: Postgres, owned by the users team
+
+edges:
+  - from: browser
+    to: gateway
+    label: HTTPS
+  - from: gateway
+    to: auth-api
+  - from: auth-api
+    to: sessions
+  - from: auth-api
+    to: users-db
+    label: read-only

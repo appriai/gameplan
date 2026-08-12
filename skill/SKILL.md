@@ -4,22 +4,29 @@ description: |
   Present an implementation plan as an interactive Excalidraw canvas that the user and their
   team can annotate, instead of a wall of Markdown. Renders the plan's decision forks, ordered
   steps, code surface and risks onto a live shared canvas, then reads the reviewers'
-  annotations back as structured feedback.
+  annotations back as structured feedback. Also draws freestyle diagrams — architecture,
+  data flow, sequence-of-calls — as their own standalone canvas, independent of any plan.
   Use this whenever the user wants to review, align on, or sign off an approach before
   execution — "plan this", "show me the approach first", "let me review before you start",
   "check with the team", "what are the options here" — or when they ask for a plan on the
-  canvas, a visual plan, or mention gameplan or Excalidraw for planning.
-  Do NOT use for tasks small enough to just do, or for diagrams unrelated to planning work.
+  canvas, a visual plan, or mention gameplan or Excalidraw for planning. Also use when the user
+  wants to sketch or draw a system diagram, architecture diagram, or sequence diagram for an
+  agent to produce — "draw the architecture", "diagram this flow", "sketch how X talks to Y".
+  Do NOT use for tasks small enough to just do.
 ---
 
 # Gameplan
 
-Turn a plan into a canvas the user can argue with.
+Turn a plan — or a freestyle diagram — into a canvas the user can argue with.
 
 A Markdown plan hides the thing that most needs review: the trajectories you *didn't* take.
 Gameplan renders decision forks, steps, blast radius and risks as a live Excalidraw canvas,
 lets humans mark it up in the colours they already brainstorm in, and hands you their marks
 back as structured feedback keyed to your own spec.
+
+The same canvas, collaboration and read-back also work for a **diagram** that isn't reviewing a
+plan at all — a system architecture, a data flow, a sequence of calls. `gameplan draw` renders
+one at its own URL, independent of any plan. See "Freestyle diagrams" below.
 
 ## The loop
 
@@ -105,6 +112,35 @@ alternatives evaporate and the reader only sees your conclusion. Put them in `fo
 Two to four forks is a normal plan. If you have none, say so explicitly rather than inventing
 filler.
 
+## Freestyle diagrams
+
+Not every picture is a plan review. When the user wants a system explained or sketched —
+architecture, data flow, a specific request's path through the code — that's a **diagram**, not
+a plan: `gameplan draw <diagram.yaml>` renders it at its own URL (`/d/<id>`), with the same
+sticky-note review protocol but none of the Goal/Steps/Forks structure.
+
+```yaml
+id: system-architecture
+title: How auth fits into the system
+layout: graph              # or: sequence
+direction: LR
+nodes:
+  - id: gateway
+    label: API gateway
+    icon: file
+    color: blue
+edges:
+  - from: gateway
+    to: auth-api
+```
+
+Same rule as a plan spec: structure in, no coordinates — dagre (for `graph`) or a time-ordered
+lane layout (for `sequence`) owns the geometry. Full field reference, both layout kinds, and how
+to add a new layout kind to the catalogue: `references/diagram-format.md`.
+
+`gameplan wait` / `gameplan feedback` / `gameplan open` all accept a diagram id exactly like a
+plan id — the CLI checks which one it is, so you never need to say.
+
 ## Reading feedback
 
 `gameplan wait` and `gameplan feedback` print feedback keyed to **your spec's node ids**:
@@ -123,18 +159,20 @@ silently ignoring a reviewer's objection is worse than pushing back on it.
 ## Commands
 
 ```
-gameplan render <spec.yaml> [--open]   render; prints local + LAN URLs
-gameplan wait <plan-id> [--timeout s]  block until reviewers submit (default 1800s)
-gameplan feedback <plan-id> [--json]   read the canvas now, without waiting
-gameplan list                          plans on the server
-gameplan status | stop                 server lifecycle
+gameplan render <spec.yaml> [--open]     render a plan; prints local + LAN URLs
+gameplan draw <diagram.yaml> [--open]    draw a freestyle diagram, own URL
+gameplan wait <id> [--timeout s]         block until reviewers submit (default 1800s)
+gameplan feedback <id> [--json]          read the canvas now, without waiting
+gameplan list                            plans and diagrams on the server
+gameplan status | stop                   server lifecycle
 ```
 
 The server autostarts on first use and keeps running, so the URL stays live while the humans
-take their time. Plans persist in `.gameplan/` in the working directory.
+take their time. Plans and diagrams persist under `.gameplan/` in the working directory.
 
 ## Details
 
-- `references/spec-format.md` — every field, defaults, validation rules
+- `references/spec-format.md` — every plan field, defaults, validation rules
+- `references/diagram-format.md` — the `graph` and `sequence` layout kinds, and how to add another
 - `references/annotation-protocol.md` — what reviewers do on the canvas and how it's parsed
 - `references/troubleshooting.md` — server, port, render and sync problems

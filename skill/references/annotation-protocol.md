@@ -64,7 +64,7 @@ step waypoint keeps the same id across revisions and the annotations anchored to
 Being explicit about the edges, so you don't over-read a report:
 
 - Moving a **fork option**, **surface node** or **risk** card is not a reorder signal. Only
-  steps have a meaningful order.
+  plan steps have a meaningful order — a diagram's nodes never do, whichever layout drew them.
 - Drawing an arrow between two generated cards isn't interpreted as a new dependency.
 - Changing a card's colour isn't a signal. Use a sticky.
 - An empty sticky is ignored, not treated as an unexplained objection.

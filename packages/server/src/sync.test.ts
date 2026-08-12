@@ -55,12 +55,12 @@ class Client {
     });
   }
 
-  static async join(planId: string, name: string): Promise<Client> {
+  static async join(id: string, name: string, kind: "plan" | "diagram" = "plan"): Promise<Client> {
     const socket = new WebSocket(`ws://127.0.0.1:${PORT}/ws`);
     await new Promise((resolve) => socket.once("open", resolve));
     const client = new Client(socket);
     const init = client.next((m) => m.t === "init");
-    socket.send(JSON.stringify({ t: "join", planId, name }));
+    socket.send(JSON.stringify({ t: "join", kind, id, name }));
     await init;
     return client;
   }
@@ -272,13 +272,14 @@ describe("the review handoff", () => {
     const planId = "rate-limiting";
     const reviewer = await Client.join(planId, "Sam");
 
+    // the waypoint dot for "rollout" — an ellipse, not a card
     const stepCard = (
       await get<{ elements: ExcalidrawElement[] }>(`/api/plans/${planId}/scene`)
     ).elements.find(
       (el) =>
         el.customData?.gameplan?.role === "step" &&
         el.customData.gameplan.nodeId === "rollout" &&
-        el.type === "rectangle",
+        el.type === "ellipse",
     )!;
 
     // the agent parks on the long-poll before any feedback exists
@@ -355,5 +356,97 @@ describe("the review handoff", () => {
 
     const generated = scene.elements.filter((el) => el.customData?.gameplan);
     expect(generated.every((el) => el.customData!.gameplan!.revision === 2)).toBe(true);
+  });
+});
+
+describe("diagrams", () => {
+  const DIAGRAM_YAML = `
+id: test-graph
+title: Test architecture
+layout: graph
+clusters:
+  - id: svc
+    label: auth-service
+nodes:
+  - id: client
+    label: Client
+  - id: api
+    label: API
+    icon: file
+    color: blue
+    cluster: svc
+edges:
+  - from: client
+    to: api
+`;
+
+  it("renders, persists, and serves independently of the plan namespace", async () => {
+    const created = await post<{ id: string; local: string }>("/api/diagrams", {
+      specYaml: DIAGRAM_YAML,
+    });
+    expect(created.id).toBe("test-graph");
+    expect(created.local).toContain("/d/test-graph");
+
+    // same id namespace as a plan would use, but stored and served separately
+    const scene = await get<{ elements: ExcalidrawElement[] }>(
+      "/api/diagrams/test-graph/scene",
+    );
+    expect(scene.elements.length).toBeGreaterThan(5);
+    expect(scene.elements.every((el) => el.customData?.gameplan?.planId === "test-graph")).toBe(
+      true,
+    );
+
+    const planLookup = await fetch(`${BASE}/api/plans/test-graph/scene`);
+    expect(planLookup.status).toBe(404);
+  });
+
+  it("collaborates over the same websocket protocol as plans, in its own room", async () => {
+    const a = await Client.join("test-graph", "A", "diagram");
+    const b = await Client.join("test-graph", "B", "diagram");
+    expect(a.received.length).toBeGreaterThan(5);
+
+    const node = a.received.find(
+      (el) => el.customData?.gameplan?.role === "diagram-node" && el.type === "rectangle",
+    )!;
+    const seenByB = b.next(
+      (m) =>
+        m.t === "elements" &&
+        (m.elements as ExcalidrawElement[]).some((el) => el.id === "diagram-note"),
+    );
+    a.send({
+      t: "elements",
+      elements: [
+        {
+          id: "diagram-note",
+          type: "rectangle",
+          x: node.x,
+          y: node.y - 60,
+          width: 100,
+          height: 30,
+          version: 1,
+          versionNonce: 1,
+          isDeleted: false,
+          backgroundColor: "#b2f2bb",
+        },
+      ] as unknown as ExcalidrawElement[],
+    });
+    await seenByB;
+
+    a.close();
+    b.close();
+  });
+
+  it("resolves its own long-poll independently of plan submissions", async () => {
+    const reviewer = await Client.join("test-graph", "Sam", "diagram");
+    const waiting = fetch(
+      `${BASE}/api/diagrams/test-graph/wait?since=0&timeout=8000`,
+    ).then((r) => r.json() as Promise<{ status: string; submission?: { by: string[] } }>);
+
+    reviewer.send({ t: "submit" });
+    const result = await waiting;
+    expect(result.status).toBe("submitted");
+    expect(result.submission!.by).toContain("Sam");
+
+    reviewer.close();
   });
 });

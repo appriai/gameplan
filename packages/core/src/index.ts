@@ -1,4 +1,5 @@
 export * from "./spec.js";
+export * from "./diagram.js";
 export * from "./excalidraw.js";
 export * from "./theme.js";
 export * from "./metrics.js";
@@ -8,3 +9,6 @@ export * from "./elements.js";
 export * from "./icons.js";
 export * from "./render.js";
 export * from "./feedback.js";
+export * from "./snapshot.js";
+export * from "./diagrams/registry.js";
+export * from "./diagrams/render.js";

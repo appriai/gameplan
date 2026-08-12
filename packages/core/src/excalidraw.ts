@@ -31,6 +31,7 @@ export interface PointBinding {
 /** Namespaced metadata we attach to every element we generate. */
 export interface GameplanMeta {
   v: 1;
+  /** owning document id — a plan id or a standalone diagram id */
   planId: string;
   role:
     | "frame"
@@ -44,7 +45,10 @@ export interface GameplanMeta {
     | "risk"
     | "out-of-scope"
     | "legend"
-    | "decor";
+    | "decor"
+    | "diagram-node"
+    | "diagram-title"
+    | "cluster";
   /** id of the corresponding node in the PlanSpec, when there is one */
   nodeId?: string;
   /** ordinal within its region, used to detect reordering */

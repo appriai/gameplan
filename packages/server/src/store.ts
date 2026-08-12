@@ -4,7 +4,10 @@ import { join } from "node:path";
 import {
   parseFeedback,
   parseSpecYaml,
+  parseDiagramYaml,
   renderPlan,
+  renderDiagram,
+  type DiagramSpec,
   type ExcalidrawElement,
   type ExcalidrawScene,
   type FeedbackReport,
@@ -18,9 +21,9 @@ export interface Submission {
   report: FeedbackReport;
 }
 
-export interface PlanState {
+export interface DocState<TSpec> {
   id: string;
-  spec: PlanSpec;
+  spec: TSpec;
   specYaml: string;
   /** authoritative element set, keyed by id */
   elements: Map<string, ExcalidrawElement>;
@@ -28,6 +31,8 @@ export interface PlanState {
   submissions: Submission[];
   updatedAt: number;
 }
+
+export type PlanState = DocState<PlanSpec>;
 
 /**
  * Last-write-wins reconciliation, matching Excalidraw's own collaboration
@@ -64,11 +69,29 @@ export function byFractionalIndex(
   return left < right ? -1 : 1;
 }
 
-export class PlanStore {
-  private readonly plans = new Map<string, PlanState>();
+export interface DocStoreOptions<TSpec> {
+  parseYaml: (source: string) => TSpec;
+  render: (spec: TSpec) => { scene: ExcalidrawScene; snapshot: Snapshot };
+  getId: (spec: TSpec) => string;
+  getRevision: (spec: TSpec) => number;
+  getTitle: (spec: TSpec) => string;
+}
+
+/**
+ * Persistence, reconciliation and the review handoff — for whatever kind of
+ * document a spec renders into. Plans and diagrams share every one of these
+ * concerns (a scene to merge edits into, a spec.yaml to survive a restart, a
+ * "send to agent" handoff); only how a spec turns into elements differs,
+ * which is exactly what `options.render` isolates.
+ */
+export class DocStore<TSpec> {
+  private readonly docs = new Map<string, DocState<TSpec>>();
   private readonly writeTimers = new Map<string, NodeJS.Timeout>();
 
-  constructor(private readonly dataDir: string) {}
+  constructor(
+    private readonly dataDir: string,
+    private readonly options: DocStoreOptions<TSpec>,
+  ) {}
 
   async init(): Promise<void> {
     await mkdir(this.dataDir, { recursive: true });
@@ -82,7 +105,7 @@ export class PlanStore {
       try {
         await this.load(id);
       } catch {
-        // a half-written plan directory shouldn't stop the server booting
+        // a half-written directory shouldn't stop the server booting
       }
     }
   }
@@ -101,7 +124,7 @@ export class PlanStore {
     }
 
     const specYaml = await readFile(specPath, "utf8");
-    const spec = parseSpecYaml(specYaml);
+    const spec = this.options.parseYaml(specYaml);
     const scene = JSON.parse(await readFile(scenePath, "utf8")) as ExcalidrawScene;
     const snapshot = JSON.parse(await readFile(snapshotPath, "utf8")) as Snapshot;
 
@@ -111,8 +134,8 @@ export class PlanStore {
       submissions = JSON.parse(await readFile(submissionsPath, "utf8")) as Submission[];
     }
 
-    this.plans.set(spec.id, {
-      id: spec.id,
+    this.docs.set(this.options.getId(spec), {
+      id: this.options.getId(spec),
       spec,
       specYaml,
       elements: new Map(scene.elements.map((el) => [el.id, el])),
@@ -123,30 +146,31 @@ export class PlanStore {
   }
 
   list(): { id: string; title: string; revision: number; updatedAt: number }[] {
-    return [...this.plans.values()]
-      .map((p) => ({
-        id: p.id,
-        title: p.spec.title,
-        revision: p.spec.revision,
-        updatedAt: p.updatedAt,
+    return [...this.docs.values()]
+      .map((d) => ({
+        id: d.id,
+        title: this.options.getTitle(d.spec),
+        revision: this.options.getRevision(d.spec),
+        updatedAt: d.updatedAt,
       }))
       .sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
-  get(id: string): PlanState | undefined {
-    return this.plans.get(id);
+  get(id: string): DocState<TSpec> | undefined {
+    return this.docs.get(id);
   }
 
   /**
-   * Render a spec into a plan, replacing any previous revision.
+   * Render a spec, replacing any previous revision.
    *
    * Human annotations survive: everything without `customData.gameplan` is
-   * carried over verbatim. Re-rendering a revised plan must not silently throw
-   * away the feedback that prompted the revision.
+   * carried over verbatim. Re-rendering a revised spec must not silently
+   * throw away the feedback that prompted the revision.
    */
-  render(specYaml: string): PlanState {
-    const spec = parseSpecYaml(specYaml);
-    const existing = this.plans.get(spec.id);
+  render(specYaml: string): DocState<TSpec> {
+    const spec = this.options.parseYaml(specYaml);
+    const id = this.options.getId(spec);
+    const existing = this.docs.get(id);
 
     const carriedOver: ExcalidrawElement[] = [];
     if (existing) {
@@ -155,13 +179,13 @@ export class PlanStore {
       }
     }
 
-    const { scene, snapshot } = renderPlan(spec);
+    const { scene, snapshot } = this.options.render(spec);
     const elements = new Map<string, ExcalidrawElement>();
     for (const el of scene.elements) elements.set(el.id, el);
     for (const el of carriedOver) elements.set(el.id, el);
 
-    const state: PlanState = {
-      id: spec.id,
+    const state: DocState<TSpec> = {
+      id,
       spec,
       specYaml,
       elements,
@@ -169,66 +193,66 @@ export class PlanStore {
       submissions: existing?.submissions ?? [],
       updatedAt: Date.now(),
     };
-    this.plans.set(spec.id, state);
-    this.schedulePersist(spec.id);
+    this.docs.set(id, state);
+    this.schedulePersist(id);
     return state;
   }
 
   /** Merge inbound elements, returning only those that actually changed. */
   applyElements(id: string, incoming: ExcalidrawElement[]): ExcalidrawElement[] {
-    const plan = this.plans.get(id);
-    if (!plan) return [];
+    const doc = this.docs.get(id);
+    if (!doc) return [];
 
     const accepted: ExcalidrawElement[] = [];
     for (const remote of incoming) {
-      const local = plan.elements.get(remote.id);
+      const local = doc.elements.get(remote.id);
       const winner = reconcile(local, remote);
       if (winner === local) continue;
-      plan.elements.set(remote.id, winner);
+      doc.elements.set(remote.id, winner);
       accepted.push(winner);
     }
     if (accepted.length > 0) {
-      plan.updatedAt = Date.now();
+      doc.updatedAt = Date.now();
       this.schedulePersist(id);
     }
     return accepted;
   }
 
   scene(id: string): ExcalidrawScene | undefined {
-    const plan = this.plans.get(id);
-    if (!plan) return undefined;
+    const doc = this.docs.get(id);
+    if (!doc) return undefined;
     return {
       type: "excalidraw",
       version: 2,
       source: "gameplan",
-      elements: [...plan.elements.values()].sort(byFractionalIndex),
+      elements: [...doc.elements.values()].sort(byFractionalIndex),
       appState: { gridSize: null, viewBackgroundColor: "#ffffff" },
       files: {},
     };
   }
 
   feedback(id: string): FeedbackReport | undefined {
-    const plan = this.plans.get(id);
+    const doc = this.docs.get(id);
     const scene = this.scene(id);
-    if (!plan || !scene) return undefined;
-    return parseFeedback(scene, plan.snapshot);
+    if (!doc || !scene) return undefined;
+    return parseFeedback(scene, doc.snapshot);
   }
 
   /** Record an explicit "Send to agent" handoff. */
   submit(id: string, by: string[]): Submission | undefined {
-    const plan = this.plans.get(id);
+    const doc = this.docs.get(id);
     const report = this.feedback(id);
-    if (!plan || !report) return undefined;
+    if (!doc || !report) return undefined;
     const submission: Submission = { at: Date.now(), by, report };
-    plan.submissions.push(submission);
+    doc.submissions.push(submission);
     this.schedulePersist(id);
     return submission;
   }
 
   latestSubmission(id: string): Submission | undefined {
-    const plan = this.plans.get(id);
-    if (!plan || plan.submissions.length === 0) return undefined;
-    return plan.submissions[plan.submissions.length - 1];
+    const doc = this.docs.get(id);
+    if (!doc || doc.submissions.length === 0) return undefined;
+    return doc.submissions[doc.submissions.length - 1];
   }
 
   delete(id: string): boolean {
@@ -237,7 +261,7 @@ export class PlanStore {
       clearTimeout(timer);
       this.writeTimers.delete(id);
     }
-    return this.plans.delete(id);
+    return this.docs.delete(id);
   }
 
   /** Debounced so a burst of drag events doesn't turn into a burst of writes. */
@@ -253,20 +277,16 @@ export class PlanStore {
   }
 
   async persist(id: string): Promise<void> {
-    const plan = this.plans.get(id);
+    const doc = this.docs.get(id);
     const scene = this.scene(id);
-    if (!plan || !scene) return;
+    if (!doc || !scene) return;
     const dir = this.dir(id);
     await mkdir(dir, { recursive: true });
     await Promise.all([
-      writeFile(join(dir, "spec.yaml"), plan.specYaml, "utf8"),
+      writeFile(join(dir, "spec.yaml"), doc.specYaml, "utf8"),
       writeFile(join(dir, "scene.excalidraw"), JSON.stringify(scene, null, 2), "utf8"),
-      writeFile(join(dir, "snapshot.json"), JSON.stringify(plan.snapshot), "utf8"),
-      writeFile(
-        join(dir, "submissions.json"),
-        JSON.stringify(plan.submissions, null, 2),
-        "utf8",
-      ),
+      writeFile(join(dir, "snapshot.json"), JSON.stringify(doc.snapshot), "utf8"),
+      writeFile(join(dir, "submissions.json"), JSON.stringify(doc.submissions, null, 2), "utf8"),
     ]);
   }
 
@@ -276,5 +296,34 @@ export class PlanStore {
       this.writeTimers.delete(id);
       await this.persist(id);
     }
+  }
+}
+
+const PLAN_OPTIONS: DocStoreOptions<PlanSpec> = {
+  parseYaml: parseSpecYaml,
+  render: renderPlan,
+  getId: (s) => s.id,
+  getRevision: (s) => s.revision,
+  getTitle: (s) => s.title,
+};
+
+const DIAGRAM_OPTIONS: DocStoreOptions<DiagramSpec> = {
+  parseYaml: parseDiagramYaml,
+  render: renderDiagram,
+  getId: (s) => s.id,
+  getRevision: (s) => s.revision,
+  getTitle: (s) => s.title,
+};
+
+/** Kept as a subclass, not just a type alias, so `new PlanStore(dataDir)` still works everywhere it already did. */
+export class PlanStore extends DocStore<PlanSpec> {
+  constructor(dataDir: string) {
+    super(dataDir, PLAN_OPTIONS);
+  }
+}
+
+export class DiagramStore extends DocStore<DiagramSpec> {
+  constructor(dataDir: string) {
+    super(dataDir, DIAGRAM_OPTIONS);
   }
 }

@@ -4,7 +4,7 @@ import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import "@excalidraw/excalidraw/index.css";
 
 import { dropSticky } from "./annotations";
-import { INTENT_ORDER, INTENT_STYLE, planIdFromLocation, type Intent } from "./protocol";
+import { INTENT_ORDER, INTENT_STYLE, docFromLocation, type Intent } from "./protocol";
 import { useSync } from "./useSync";
 
 const NAME_KEY = "gameplan.reviewer.name";
@@ -71,12 +71,13 @@ function Palette({
 }
 
 export default function App() {
-  const planId = planIdFromLocation();
+  const doc = docFromLocation();
+  const planId = doc?.id;
   const [name, setName] = useState<string | null>(() => localStorage.getItem(NAME_KEY));
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
   const [justSent, setJustSent] = useState(false);
 
-  const sync = useSync(api, planId ?? "", name ?? "");
+  const sync = useSync(api, planId ?? "", name ?? "", doc?.kind ?? "plan");
 
   const handleName = useCallback((value: string) => {
     localStorage.setItem(NAME_KEY, value);
@@ -110,14 +111,16 @@ export default function App() {
     [],
   );
 
-  if (!planId) {
+  if (!doc) {
     return (
       <div className="overlay">
         <div className="card">
-          <h1>No plan in the URL</h1>
+          <h1>Nothing to open here</h1>
           <p>
-            Open a plan at <code>/p/&lt;plan-id&gt;</code>, or render one with{" "}
-            <code>gameplan render &lt;spec.yaml&gt;</code>.
+            Open a plan at <code>/p/&lt;plan-id&gt;</code> — render one with{" "}
+            <code>gameplan render &lt;spec.yaml&gt;</code> — or a diagram at{" "}
+            <code>/d/&lt;diagram-id&gt;</code>, rendered with{" "}
+            <code>gameplan draw &lt;diagram.yaml&gt;</code>.
           </p>
         </div>
       </div>

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Server } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
 import type { ExcalidrawElement } from "@gameplan/core";
-import type { PlanStore } from "./store.js";
+import type { DocStore } from "./store.js";
 
 /** Cursor colours, cycled so two reviewers rarely collide. */
 const PEER_COLORS = [
@@ -16,18 +16,21 @@ const PEER_COLORS = [
   "#c2255c",
 ];
 
+export type DocKind = "plan" | "diagram";
+
 export interface Peer {
   id: string;
   name: string;
   color: string;
-  planId: string;
+  kind: DocKind;
+  docId: string;
   socket: WebSocket;
   pointer?: { x: number; y: number };
   selectedElementIds?: Record<string, boolean>;
 }
 
 type ClientMessage =
-  | { t: "join"; planId: string; name: string }
+  | { t: "join"; kind: DocKind; id: string; name: string }
   | { t: "elements"; elements: ExcalidrawElement[] }
   | { t: "pointer"; x: number; y: number; selectedElementIds?: Record<string, boolean> }
   | { t: "submit" }
@@ -36,33 +39,44 @@ type ClientMessage =
 export interface CollabHub {
   wss: WebSocketServer;
   /** notify long-pollers that a reviewer handed feedback to the agent */
-  onSubmit(listener: (planId: string) => void): () => void;
+  onSubmit(listener: (kind: DocKind, id: string) => void): () => void;
+  /** push a fresh scene to every client watching this document right now */
+  broadcastRerender(kind: DocKind, id: string, scene: unknown): void;
   close(): void;
 }
 
-export function attachCollab(server: Server, store: PlanStore): CollabHub {
+/** Groups peers per document — a plan and a diagram can share an id string. */
+function room(kind: DocKind, id: string): string {
+  return `${kind}:${id}`;
+}
+
+export function attachCollab(
+  server: Server,
+  stores: Record<DocKind, DocStore<unknown>>,
+): CollabHub {
   const wss = new WebSocketServer({ server, path: "/ws" });
   const peers = new Map<WebSocket, Peer>();
-  const submitListeners = new Set<(planId: string) => void>();
+  const submitListeners = new Set<(kind: DocKind, id: string) => void>();
   let colorCursor = 0;
 
-  function peersOf(planId: string): Peer[] {
-    return [...peers.values()].filter((p) => p.planId === planId);
+  function peersOf(kind: DocKind, id: string): Peer[] {
+    const key = room(kind, id);
+    return [...peers.values()].filter((p) => room(p.kind, p.docId) === key);
   }
 
   function send(socket: WebSocket, payload: unknown): void {
     if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(payload));
   }
 
-  function broadcast(planId: string, payload: unknown, except?: WebSocket): void {
-    for (const peer of peersOf(planId)) {
+  function broadcast(kind: DocKind, id: string, payload: unknown, except?: WebSocket): void {
+    for (const peer of peersOf(kind, id)) {
       if (peer.socket === except) continue;
       send(peer.socket, payload);
     }
   }
 
-  function publicPeers(planId: string) {
-    return peersOf(planId).map((p) => ({
+  function publicPeers(kind: DocKind, id: string) {
+    return peersOf(kind, id).map((p) => ({
       id: p.id,
       name: p.name,
       color: p.color,
@@ -81,9 +95,10 @@ export function attachCollab(server: Server, store: PlanStore): CollabHub {
       }
 
       if (msg.t === "join") {
-        const scene = store.scene(msg.planId);
-        if (!scene) {
-          send(socket, { t: "error", message: `no plan "${msg.planId}"` });
+        const store = stores[msg.kind];
+        const scene = store?.scene(msg.id);
+        if (!store || !scene) {
+          send(socket, { t: "error", message: `no ${msg.kind} "${msg.id}"` });
           socket.close();
           return;
         }
@@ -91,7 +106,8 @@ export function attachCollab(server: Server, store: PlanStore): CollabHub {
           id: randomUUID(),
           name: msg.name?.trim() || "Anonymous",
           color: PEER_COLORS[colorCursor++ % PEER_COLORS.length]!,
-          planId: msg.planId,
+          kind: msg.kind,
+          docId: msg.id,
           socket,
         };
         peers.set(socket, peer);
@@ -99,21 +115,22 @@ export function attachCollab(server: Server, store: PlanStore): CollabHub {
           t: "init",
           scene,
           you: { id: peer.id, name: peer.name, color: peer.color },
-          spec: store.get(msg.planId)?.spec,
-          peers: publicPeers(msg.planId).filter((p) => p.id !== peer.id),
+          spec: store.get(msg.id)?.spec,
+          peers: publicPeers(msg.kind, msg.id).filter((p) => p.id !== peer.id),
         });
-        broadcast(msg.planId, { t: "peers", peers: publicPeers(msg.planId) }, undefined);
+        broadcast(msg.kind, msg.id, { t: "peers", peers: publicPeers(msg.kind, msg.id) });
         return;
       }
 
       const peer = peers.get(socket);
       if (!peer) return;
+      const store = stores[peer.kind];
 
       switch (msg.t) {
         case "elements": {
-          const accepted = store.applyElements(peer.planId, msg.elements);
+          const accepted = store.applyElements(peer.docId, msg.elements);
           if (accepted.length > 0) {
-            broadcast(peer.planId, { t: "elements", elements: accepted }, socket);
+            broadcast(peer.kind, peer.docId, { t: "elements", elements: accepted }, socket);
           }
           break;
         }
@@ -121,7 +138,8 @@ export function attachCollab(server: Server, store: PlanStore): CollabHub {
           peer.pointer = { x: msg.x, y: msg.y };
           peer.selectedElementIds = msg.selectedElementIds;
           broadcast(
-            peer.planId,
+            peer.kind,
+            peer.docId,
             {
               t: "pointer",
               id: peer.id,
@@ -136,16 +154,16 @@ export function attachCollab(server: Server, store: PlanStore): CollabHub {
           break;
         }
         case "submit": {
-          const names = [...new Set(peersOf(peer.planId).map((p) => p.name))];
-          const submission = store.submit(peer.planId, names);
+          const names = [...new Set(peersOf(peer.kind, peer.docId).map((p) => p.name))];
+          const submission = store.submit(peer.docId, names);
           if (submission) {
-            broadcast(peer.planId, {
+            broadcast(peer.kind, peer.docId, {
               t: "submitted",
               at: submission.at,
               by: submission.by,
               summary: summarise(submission.report),
             });
-            for (const listener of submitListeners) listener(peer.planId);
+            for (const listener of submitListeners) listener(peer.kind, peer.docId);
           }
           break;
         }
@@ -159,8 +177,8 @@ export function attachCollab(server: Server, store: PlanStore): CollabHub {
       const peer = peers.get(socket);
       peers.delete(socket);
       if (peer) {
-        broadcast(peer.planId, { t: "peers", peers: publicPeers(peer.planId) });
-        broadcast(peer.planId, { t: "peer-left", id: peer.id });
+        broadcast(peer.kind, peer.docId, { t: "peers", peers: publicPeers(peer.kind, peer.docId) });
+        broadcast(peer.kind, peer.docId, { t: "peer-left", id: peer.id });
       }
     });
   });
@@ -170,6 +188,9 @@ export function attachCollab(server: Server, store: PlanStore): CollabHub {
     onSubmit(listener) {
       submitListeners.add(listener);
       return () => submitListeners.delete(listener);
+    },
+    broadcastRerender(kind, id, scene) {
+      broadcast(kind, id, { t: "rerender", id, scene });
     },
     close() {
       for (const socket of peers.keys()) socket.close();

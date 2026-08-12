@@ -5,6 +5,7 @@ import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import {
   socketUrl,
   type ClientMessage,
+  type DocKind,
   type PeerInfo,
   type ServerMessage,
   type SyncElement,
@@ -50,8 +51,9 @@ const POINTER_THROTTLE_MS = 60;
  */
 export function useSync(
   api: ExcalidrawImperativeAPI | null,
-  planId: string,
+  id: string,
   name: string,
+  kind: DocKind = "plan",
 ): Sync {
   const socketRef = useRef<WebSocket | null>(null);
   const known = useRef(new Map<string, number>());
@@ -111,7 +113,7 @@ export function useSync(
   }, [api]);
 
   useEffect(() => {
-    if (!api || !planId) return;
+    if (!api || !id) return;
     closedByUs.current = false;
     let disposed = false;
 
@@ -122,7 +124,7 @@ export function useSync(
 
       socket.addEventListener("open", () => {
         retryDelay.current = 500;
-        socket.send(JSON.stringify({ t: "join", planId, name } satisfies ClientMessage));
+        socket.send(JSON.stringify({ t: "join", kind, id, name } satisfies ClientMessage));
       });
 
       socket.addEventListener("message", (event) => {
@@ -210,7 +212,7 @@ export function useSync(
     // `me` is intentionally excluded: it changes once, after init, and
     // reconnecting on it would drop the session we just established
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, planId, name, applyRemote, pushCollaborators]);
+  }, [api, id, name, kind, applyRemote, pushCollaborators]);
 
   const flushChanges = useCallback(() => {
     if (!api) return;

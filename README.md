@@ -13,6 +13,12 @@ gameplan render plan.yaml --open   # agent renders; prints a local URL and a LAN
 gameplan wait rate-limiting        # agent blocks, then gets structured feedback
 ```
 
+Freestyle diagrams — not a plan review, just "draw this" — get their own standalone canvas:
+
+```
+gameplan draw architecture.yaml --open   # own URL (/d/<id>), same collab + annotation protocol
+```
+
 ## Install
 
 ```bash
@@ -36,8 +42,11 @@ ln -s "$PWD/skill" ~/.claude/skills/gameplan
 | `@gameplan/web` | Vite + React + Excalidraw client with live cursors and an annotation palette |
 | `@gameplan/cli` | The `gameplan` command; autostarts the server |
 
-The agent writes a **PlanSpec** — semantic YAML, no coordinates. The layout engine owns
-geometry, because models describe intent well and place geometry badly.
+The agent writes a **PlanSpec** (or, for a freestyle diagram, a **DiagramSpec**) — semantic
+YAML, no coordinates. The layout engine owns geometry, because models describe intent well and
+place geometry badly. Diagrams pick a layout from a small, extensible **catalogue** —
+`graph` (dagre, with optional clustering) and `sequence` (actor lifelines) ship built in; a new
+kind is a module in `packages/core/src/diagrams/` plus one registration call, not a rewrite.
 
 Every generated element carries `customData.gameplan`, so the split between "what the agent
 drew" and "what a human did to it" is exact rather than heuristic. That's what makes read-back
@@ -60,7 +69,7 @@ collaboration uses.
 ## Development
 
 ```bash
-npm test                      # 41 tests across core and server
+npm test                      # tests across core and server
 npm run dev                   # Vite dev server on :5173, proxying the API on :3939
 node packages/server/dist/main.js   # run the server in the foreground
 ```

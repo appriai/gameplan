@@ -34,13 +34,15 @@ async function writeRuntime(runtime: Runtime): Promise<void> {
   await writeFile(RUNTIME_FILE, JSON.stringify(runtime, null, 2), "utf8");
 }
 
-export async function health(port: number): Promise<{ ok: boolean; plans: number; pid: number } | undefined> {
+export async function health(
+  port: number,
+): Promise<{ ok: boolean; plans: number; diagrams: number; pid: number } | undefined> {
   try {
     const res = await fetch(`${baseUrl(port)}/health`, {
       signal: AbortSignal.timeout(1500),
     });
     if (!res.ok) return undefined;
-    return (await res.json()) as { ok: boolean; plans: number; pid: number };
+    return (await res.json()) as { ok: boolean; plans: number; diagrams: number; pid: number };
   } catch {
     return undefined;
   }

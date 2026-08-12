@@ -59,6 +59,17 @@ export const SURFACE_STYLE: Record<SurfaceKind, { stroke: string; background: st
   untouched: { stroke: PALETTE.muted, background: PALETTE.transparent },
 };
 
+/** Named colours for freestyle diagram nodes — not tied to plan semantics. */
+export const DIAGRAM_COLOR_STYLE: Record<string, { stroke: string; background: string }> = {
+  ink: { stroke: PALETTE.ink, background: PALETTE.transparent },
+  green: { stroke: PALETTE.strokeGreen, background: PALETTE.bgGreen },
+  blue: { stroke: PALETTE.strokeBlue, background: PALETTE.bgBlue },
+  red: { stroke: PALETTE.strokeRed, background: PALETTE.bgRed },
+  yellow: { stroke: PALETTE.strokeYellow, background: PALETTE.bgYellow },
+  violet: { stroke: PALETTE.strokeViolet, background: PALETTE.bgViolet },
+  grey: { stroke: PALETTE.muted, background: PALETTE.bgGrey },
+};
+
 export const RISK_STYLE: Record<Severity, { stroke: string; background: string }> = {
   high: { stroke: PALETTE.strokeRed, background: PALETTE.bgRed },
   med: { stroke: PALETTE.strokeYellow, background: PALETTE.bgYellow },
@@ -109,4 +120,11 @@ export const METRICS = {
 
   // journey-map: risk cards, icon-first
   riskIconSize: 24,
+
+  // freestyle diagrams
+  diagramNodeWidth: 200,
+  diagramIconSize: 26,
+  sequenceLaneWidth: 200,
+  sequenceRowHeight: 56,
+  sequenceActorHeight: 44,
 } as const;

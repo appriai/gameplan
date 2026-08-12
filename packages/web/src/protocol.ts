@@ -33,12 +33,15 @@ export interface SceneLike {
   elements: SyncElement[];
 }
 
+/** A plan or a standalone diagram — same collab protocol, separate id namespaces. */
+export type DocKind = "plan" | "diagram";
+
 export type ServerMessage =
   | {
       t: "init";
       scene: SceneLike;
       you: { id: string; name: string; color: string };
-      spec?: { id: string; title: string; revision: number };
+      spec?: { id: string; title: string; revision: number; layout?: string };
       peers: PeerInfo[];
     }
   | { t: "elements"; elements: SyncElement[] }
@@ -54,20 +57,25 @@ export type ServerMessage =
   | { t: "peers"; peers: PeerInfo[] }
   | { t: "peer-left"; id: string }
   | { t: "submitted"; at: number; by: string[]; summary: string }
-  | { t: "rerender"; planId: string; scene: SceneLike }
+  | { t: "rerender"; id: string; scene: SceneLike }
   | { t: "error"; message: string }
   | { t: "pong" };
 
 export type ClientMessage =
-  | { t: "join"; planId: string; name: string }
+  | { t: "join"; kind: DocKind; id: string; name: string }
   | { t: "elements"; elements: SyncElement[] }
   | { t: "pointer"; x: number; y: number; selectedElementIds?: Record<string, boolean> }
   | { t: "submit" }
   | { t: "ping" };
 
-export function planIdFromLocation(): string | undefined {
-  const match = window.location.pathname.match(/^\/p\/([^/]+)/);
-  return match?.[1];
+/** `/p/<id>` for a plan, `/d/<id>` for a standalone diagram. */
+export function docFromLocation(): { kind: DocKind; id: string } | undefined {
+  const path = window.location.pathname;
+  const plan = path.match(/^\/p\/([^/]+)/);
+  if (plan) return { kind: "plan", id: plan[1]! };
+  const diagram = path.match(/^\/d\/([^/]+)/);
+  if (diagram) return { kind: "diagram", id: diagram[1]! };
+  return undefined;
 }
 
 export function socketUrl(): string {
