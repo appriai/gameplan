@@ -1,0 +1,127 @@
+id: rate-limiting
+title: Add rate limiting to the public API
+revision: 1
+goal: >
+  Stop a single API key from exhausting the request budget for everyone else,
+  without adding a hard dependency that makes local development painful.
+
+successCriteria:
+  - A key over its quota gets 429 with a Retry-After header
+  - Limits are configurable per key without a deploy
+  - The limiter degrades to allow-all if its backing store is unreachable
+  - p99 latency added by the limiter stays under 2ms
+
+forks:
+  - id: store
+    question: Where does the counter state live?
+    atStep: limiter
+    options:
+      - id: redis
+        label: Redis, sliding window
+        chosen: true
+        rationale: >
+          Already in the stack for sessions. Sliding window via sorted sets is
+          accurate enough and survives a process restart.
+      - id: in-memory
+        label: In-process memory
+        rationale: >
+          Zero infra and fastest, but wrong the moment we run more than one
+          instance — which we already do in staging.
+      - id: postgres
+        label: Postgres counter table
+        rationale: >
+          Strongly consistent and no new infra, but a write per request on the
+          primary is the wrong place to spend budget.
+
+  - id: placement
+    question: Where in the request path does the check run?
+    options:
+      - id: middleware
+        label: App middleware
+        chosen: true
+        rationale: >
+          Sees the resolved API key and route, so per-route limits are possible
+          later. Costs one hop of app time per rejected request.
+      - id: gateway
+        label: At the edge gateway
+        rationale: >
+          Cheapest for rejected traffic, but the gateway can't see which key a
+          request resolves to without duplicating auth logic.
+
+surface:
+  - id: config
+    path: src/config/limits.ts
+    kind: new
+    note: Per-key quotas, hot-reloaded
+  - id: limiter
+    path: src/ratelimit/limiter.ts
+    kind: new
+    note: Sliding-window counter
+    dependsOn: [config, redis]
+  - id: redis
+    path: src/infra/redis.ts
+    kind: read
+    note: Existing client, reused
+  - id: middleware
+    path: src/http/middleware/rateLimit.ts
+    kind: new
+    dependsOn: [limiter]
+  - id: app
+    path: src/http/app.ts
+    kind: modified
+    note: Register middleware
+    dependsOn: [middleware]
+
+steps:
+  - id: config
+    title: Quota configuration
+    detail: Typed config with a per-key override map and a sane default tier.
+    files: [src/config/limits.ts]
+    verify: Unit test covers default fallback and override precedence
+
+  - id: limiter
+    title: Sliding-window limiter
+    detail: Redis sorted-set window, returns remaining budget and reset time.
+    files: [src/ratelimit/limiter.ts]
+    verify: Integration test against a real Redis hits the boundary exactly
+    dependsOn: [config]
+
+  - id: degrade
+    title: Fail-open behaviour
+    detail: Redis errors and timeouts allow the request and emit a metric.
+    files: [src/ratelimit/limiter.ts]
+    verify: Test with the Redis client stubbed to throw — request still passes
+    dependsOn: [limiter]
+
+  - id: middleware
+    title: HTTP middleware
+    detail: Maps the limiter result to 429 plus Retry-After and X-RateLimit-* headers.
+    files: [src/http/middleware/rateLimit.ts, src/http/app.ts]
+    verify: Supertest asserts headers on both allowed and rejected requests
+    dependsOn: [degrade]
+
+  - id: rollout
+    title: Observability and rollout
+    detail: Metrics for allowed/rejected/failed-open, shipped behind a flag.
+    files: [src/http/middleware/rateLimit.ts]
+    verify: Flag off is a no-op in staging for one day, then enable
+    dependsOn: [middleware]
+
+risks:
+  - id: redis-latency
+    text: A slow Redis adds latency to every request, not just limited ones.
+    severity: high
+    mitigation: Hard 5ms timeout, fail open, alert on the failure metric
+  - id: clock-skew
+    text: Sliding windows across instances assume roughly synced clocks.
+    severity: med
+    mitigation: Use Redis server time rather than app time
+  - id: key-cardinality
+    text: One sorted set per key grows unbounded if keys are rotated often.
+    severity: low
+    mitigation: TTL on each window key
+
+outOfScope:
+  - Per-route or per-endpoint limits — the config shape allows it later
+  - Quota billing or overage charging
+  - Rate limiting internal service-to-service traffic

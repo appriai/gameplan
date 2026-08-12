@@ -1,0 +1,25 @@
+{
+  "name": "gameplan-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Interactive agent plans on a live Excalidraw canvas",
+  "type": "module",
+  "workspaces": [
+    "packages/core",
+    "packages/server",
+    "packages/cli",
+    "packages/web"
+  ],
+  "scripts": {
+    "build": "npm run build -w @gameplan/core && npm run build -w @gameplan/server && npm run build -w @gameplan/cli && npm run build -w @gameplan/web",
+    "test": "npm run test -w @gameplan/core && npm run test -w @gameplan/server",
+    "dev": "npm run dev -w @gameplan/web"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "allowScripts": {
+    "esbuild@0.21.5": true,
+    "esbuild@0.25.12": true
+  }
+}

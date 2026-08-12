@@ -1,0 +1,190 @@
+# Gameplan explaining itself. The "steps" section here isn't an implementation
+# sequence — it's the lifecycle a single plan goes through, spec to feedback.
+id: gameplan-architecture
+title: How gameplan is put together
+revision: 1
+goal: >
+  Give a new contributor a mental map: four packages, a spec-in/report-out
+  contract between them, and the request lifecycle that connects them —
+  without reading four package.json files first.
+
+successCriteria:
+  - Anyone can trace one plan from written YAML to rendered canvas to feedback
+  - Every generated element is attributable to a spec node; every human mark is not
+  - The loop closes with zero manual Excalidraw JSON editing, ever
+
+forks:
+  - id: renderer
+    question: How do we turn a plan into a diagram?
+    options:
+      - id: custom-layout
+        label: Custom PlanSpec + layout engine
+        chosen: true
+        rationale: >
+          A semantic schema the agent writes, geometry the renderer owns.
+          customData tagging on every element makes generated-vs-human exact,
+          which is what read-back depends on.
+      - id: mermaid
+        label: "@excalidraw/mermaid-to-excalidraw"
+        rationale: >
+          Existing library, but needs a DOM, only emits generic flowcharts,
+          and has no fork/risk semantics or per-element tagging to read back.
+
+  - id: surface-choice
+    question: Chat widget or a standalone app?
+    options:
+      - id: standalone
+        label: Standalone server + web + CLI
+        chosen: true
+        rationale: >
+          Needs humans to edit and the agent to read the edits back later —
+          a persistent canvas with realtime collab, not a one-shot render.
+      - id: official-mcp
+        label: Official Excalidraw MCP
+        rationale: >
+          Streams a diagram inline in the chat UI. Great for "draw me a cat",
+          no story for a team annotating over time and the agent revisiting it.
+
+  - id: reconciliation
+    question: How do concurrent edits converge?
+    atStep: sync
+    options:
+      - id: lww
+        label: Element-level last-write-wins
+        chosen: true
+        rationale: >
+          Same rule Excalidraw's own collaboration uses — higher version wins,
+          versionNonce breaks ties. No new conflict model to reason about.
+      - id: crdt
+        label: CRDT (Yjs)
+        rationale: >
+          More correct under partition, but this is a review tool for a small
+          team in one sitting, not an offline-first multiplayer editor.
+
+surface:
+  - id: spec
+    path: packages/core/src/spec.ts
+    kind: read
+    note: PlanSpec zod schema — the only thing the agent ever writes
+  - id: layout
+    path: packages/core/src/layout/
+    kind: read
+    note: Goal, steps, forks, surface, risks, legend — one module per region
+    dependsOn: [spec]
+  - id: render
+    path: packages/core/src/render.ts
+    kind: read
+    note: "renderPlan(): spec -> Excalidraw scene + snapshot"
+    dependsOn: [layout]
+  - id: feedback
+    path: packages/core/src/feedback.ts
+    kind: read
+    note: "parseFeedback(): scene + snapshot -> structured report"
+    dependsOn: [render]
+  - id: store
+    path: packages/server/src/store.ts
+    kind: read
+    note: PlanStore — LWW reconciliation, disk persistence
+    dependsOn: [render, feedback]
+  - id: collab
+    path: packages/server/src/collab.ts
+    kind: read
+    note: WebSocket hub — join, elements, pointer, submit
+    dependsOn: [store]
+  - id: app
+    path: packages/server/src/app.ts
+    kind: read
+    note: Fastify REST API + serves the built web client
+    dependsOn: [store, collab]
+  - id: cli
+    path: packages/cli/src/index.ts
+    kind: read
+    note: "gameplan command — render / wait / feedback"
+    dependsOn: [app]
+  - id: web
+    path: packages/web/src/useSync.ts
+    kind: read
+    note: Browser sync hook — version-map echo guard
+    dependsOn: [collab]
+
+steps:
+  - id: write-spec
+    title: Agent writes a PlanSpec
+    detail: Semantic YAML — no coordinates, no Excalidraw JSON.
+    files: [examples/*.plan.yaml]
+    verify: parseSpecYaml validates locally with line-level errors
+
+  - id: render
+    title: CLI renders the spec
+    detail: Layout engine assigns geometry; every element gets customData.gameplan.
+    files: [packages/core/src/render.ts, packages/cli/src/index.ts]
+    verify: POST /api/plans returns element count plus local + LAN URLs
+    dependsOn: [write-spec]
+
+  - id: serve
+    title: Server stores and persists it
+    detail: Scene held in memory, debounce-written to .gameplan/<id>/ on disk.
+    files: [packages/server/src/store.ts]
+    verify: scene.excalidraw and spec.yaml appear on disk after render
+    dependsOn: [render]
+
+  - id: join
+    title: Reviewers open the canvas
+    detail: WebSocket join hands back the full scene and a named cursor colour.
+    files: [packages/web/src/useSync.ts, packages/server/src/collab.ts]
+    verify: a second browser tab sees the same scene within one round trip
+    dependsOn: [serve]
+
+  - id: annotate
+    title: Reviewers mark it up
+    detail: Palette drops a sticky stamped with intent and author; or freehand.
+    files: [packages/web/src/annotations.ts]
+    verify: sticky carries customData.gameplanAnnotation with a real author name
+    dependsOn: [join]
+
+  - id: sync
+    title: Edits reconcile across every open tab
+    detail: Element-level LWW on version/versionNonce; no echo back to the author.
+    files: [packages/server/src/store.ts]
+    verify: two tabs converge; neither client's own edit bounces back to it
+    dependsOn: [annotate]
+
+  - id: submit
+    title: A reviewer sends it back
+    detail: The "Send to agent" button resolves the CLI's long-poll for anyone waiting.
+    files: [packages/server/src/app.ts]
+    verify: gameplan wait returns within one request after the button is pressed
+    dependsOn: [sync]
+
+  - id: read-feedback
+    title: Agent reads structured feedback
+    detail: Keyed to the agent's own spec node ids, not Excalidraw element ids.
+    files: [packages/core/src/feedback.ts]
+    verify: REORDER / REJECT / REWRITE and comments print via gameplan feedback
+    dependsOn: [submit]
+
+  - id: revise
+    title: Agent revises and re-renders
+    detail: Same plan id updates the canvas in place; every annotation survives.
+    files: [packages/core/src/render.ts]
+    verify: a sticky placed before a re-render is still there after it
+    dependsOn: [read-feedback]
+
+risks:
+  - id: text-metrics
+    text: Layout is computed in Node with no fonts; Excalidraw measures in the browser.
+    severity: med
+    mitigation: Advance widths measured from the real fonts, pinned by a 5%-accuracy test
+  - id: proximity-anchor
+    text: A comment not pinned by an explicit arrow is anchored by nearest-card guess.
+    severity: low
+    mitigation: Reports mark these "(inferred by position)" rather than stating them as fact
+  - id: no-auth
+    text: The server has no authentication.
+    severity: low
+    mitigation: Deliberate — LAN dev tool for one team's review session, not a hosted service
+
+outOfScope:
+  - Deployed hosting with auth or multi-tenant plans
+  - CRDT-based conflict resolution
+  - Editing the diagram itself as the plan's source of truth (the spec always is)

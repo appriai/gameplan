@@ -1,0 +1,52 @@
+# The smallest useful plan: a goal, a couple of steps, and the one decision
+# that was actually debatable. Most plans should look closer to this than to
+# rate-limiting.plan.yaml — pad the sections and reviewers stop reading.
+id: session-timeout
+title: Make the session timeout configurable
+revision: 1
+goal: >
+  Ops needs to shorten session lifetime for the compliance audit without a
+  code change. Today it's a hardcoded 24 hours.
+
+successCriteria:
+  - Timeout is read from config at startup, defaulting to today's 24h
+  - An invalid value fails fast at boot rather than silently falling back
+
+forks:
+  - id: reload
+    question: Does a changed timeout apply to sessions already issued?
+    options:
+      - id: new-only
+        label: New sessions only
+        chosen: true
+        rationale: >
+          Expiry is baked into the token at issue time. Honouring a new value
+          for existing tokens means a lookup per request.
+      - id: retroactive
+        label: Retroactive
+        rationale: >
+          What ops actually asked for, but it turns a stateless check into a
+          store read on every request. Worth doing only if the audit demands it.
+
+steps:
+  - id: config
+    title: Read timeout from config
+    files: [src/config/session.ts]
+    verify: Boot with an invalid value and confirm the process exits non-zero
+
+  - id: wire
+    title: Use it at token issue
+    detail: Replace the hardcoded constant at the one call site.
+    files: [src/auth/session.ts]
+    verify: Existing session tests pass with the default unchanged
+    dependsOn: [config]
+
+risks:
+  - id: audit-mismatch
+    text: Ops may have meant retroactive expiry, which this doesn't give them.
+    severity: high
+    mitigation: Confirm with ops before building; the fork above is the question
+
+outOfScope:
+  - Retroactive expiry of already-issued tokens
+  - Per-tenant timeout overrides

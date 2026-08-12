@@ -1,0 +1,23 @@
+{
+  "name": "@gameplan/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "gameplan": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "postbuild": "chmod +x dist/index.js"
+  },
+  "dependencies": {
+    "@gameplan/core": "0.1.0",
+    "@gameplan/server": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}
