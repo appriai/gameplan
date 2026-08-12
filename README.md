@@ -53,7 +53,7 @@ collaboration uses.
 |---|---|
 | Green / red / yellow / blue sticky | approve / reject / question / add |
 | Arrow from sticky to card | pins the note to that card |
-| Drag a step card | reorder |
+| Drag a step waypoint | reorder |
 | Scribble over a card | kill it |
 | Edit text in place | rewrite it |
 

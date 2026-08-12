@@ -1,6 +1,10 @@
+import { flagGlyph } from "../icons.js";
 import { measureText } from "../text.js";
 import { METRICS, PALETTE, TYPE_SCALE } from "../theme.js";
 import { contentWidth, type RegionCtx, type RegionResult } from "./common.js";
+
+const FLAG_SIZE = 30;
+const FLAG_GUTTER = 14;
 
 /**
  * The Goal region: what we're trying to achieve and how we'll know we got
@@ -9,12 +13,13 @@ import { contentWidth, type RegionCtx, type RegionResult } from "./common.js";
  */
 export function layoutGoal(ctx: RegionCtx): RegionResult {
   const { builder, spec } = ctx;
-  const inner = contentWidth(ctx.width);
   const pad = METRICS.framePadding;
+  const titleInset = FLAG_SIZE + FLAG_GUTTER;
+  const inner = contentWidth(ctx.width);
 
   // measure pass: we need the frame's height before we can emit it, because
   // the frame must come first in z-order to sit behind its children
-  const title = measureText(spec.title, TYPE_SCALE.title, inner);
+  const title = measureText(spec.title, TYPE_SCALE.title, inner - titleInset);
   const goal = measureText(spec.goal, TYPE_SCALE.heading, inner);
   const criteria = spec.successCriteria.map((c) =>
     measureText(`☐  ${c}`, TYPE_SCALE.body, inner - 16),
@@ -38,14 +43,23 @@ export function layoutGoal(ctx: RegionCtx): RegionResult {
 
   let cursor = ctx.y + pad;
 
+  flagGlyph(builder, {
+    key: "goal::flag",
+    role: "goal",
+    nodeId: "title",
+    x: ctx.x + pad,
+    y: cursor + (title.height - FLAG_SIZE) / 2,
+    size: FLAG_SIZE,
+    frameId: frame.id,
+  });
   builder.text({
     key: "goal::title",
     role: "goal",
     nodeId: "title",
-    x: ctx.x + pad,
+    x: ctx.x + pad + titleInset,
     y: cursor,
     text: spec.title,
-    maxWidth: inner,
+    maxWidth: inner - titleInset,
     fontSize: TYPE_SCALE.title,
     frameId: frame.id,
   });

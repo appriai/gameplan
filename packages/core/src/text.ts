@@ -130,6 +130,66 @@ export function measureText(
   };
 }
 
+/**
+ * Force `text` onto a single line, ellipsizing from the end if it doesn't
+ * fit. For the short captions in the journey-map layouts — a step's detail,
+ * a truncated verify line — where wrapping into a paragraph would recreate
+ * exactly the wall-of-text problem the layout exists to avoid.
+ */
+export function truncateLine(
+  text: string,
+  fontSize: number,
+  maxWidth: number,
+  family: FontFamily = FONT.hand,
+): string {
+  const oneLine = text.replace(/\s+/g, " ").trim();
+  if (measureLine(oneLine, fontSize, family) <= maxWidth) return oneLine;
+  let out = oneLine;
+  while (out.length > 1 && measureLine(`${out}…`, fontSize, family) > maxWidth) {
+    out = out.slice(0, -1);
+  }
+  return `${out.trimEnd()}…`;
+}
+
+/**
+ * Wrap onto up to `maxLines` lines; only ellipsize the last one if the text
+ * genuinely doesn't fit even then.
+ *
+ * This is the caption workhorse for the journey-map layouts — capping a
+ * fork's rationale or a risk's text to a single line at these widths cut off
+ * most real sentences, since a one-sentence caption rarely fits in ~25
+ * characters. Two or three lines is enough room to actually read it; the
+ * ellipsis is now the exception, not the default.
+ */
+export function clampLines(
+  text: string,
+  fontSize: number,
+  maxWidth: number,
+  maxLines: number,
+  family: FontFamily = FONT.hand,
+): Measured {
+  const wrapped = wrapText(text, fontSize, maxWidth, family);
+  let lines: string[];
+  if (wrapped.length <= maxLines) {
+    lines = wrapped;
+  } else {
+    lines = wrapped.slice(0, maxLines);
+    const last = lines[maxLines - 1]!;
+    let out = last;
+    while (out.length > 0 && measureLine(`${out}…`, fontSize, family) > maxWidth) {
+      out = out.slice(0, -1);
+    }
+    lines[maxLines - 1] = `${out.trimEnd()}…`;
+  }
+  const width = Math.max(1, ...lines.map((line) => Math.ceil(measureLine(line, fontSize, family))));
+  return {
+    text: lines.join("\n"),
+    lines,
+    width: Math.min(Math.ceil(width), Math.ceil(maxWidth)),
+    height: Math.ceil(lines.length * fontSize * LINE_HEIGHT),
+  };
+}
+
 /** Collapse a path to fit, keeping the informative tail: …/foo/bar.ts */
 export function truncatePath(
   path: string,

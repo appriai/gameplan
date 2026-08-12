@@ -1,42 +1,39 @@
 import { groupId } from "../ids.js";
-import { measureText } from "../text.js";
+import { warningTriangle } from "../icons.js";
+import { clampLines, measureText } from "../text.js";
 import { METRICS, PALETTE, RISK_STYLE, TYPE_SCALE } from "../theme.js";
 import type { Risk } from "../spec.js";
-import {
-  COLUMNS,
-  columnX,
-  contentWidth,
-  type RegionCtx,
-  type RegionResult,
-} from "./common.js";
+import { COLUMNS, columnX, contentWidth, type RegionCtx, type RegionResult } from "./common.js";
 
 const INNER = METRICS.cardWidth - 2 * METRICS.cardPadding;
+const HEADLINE_LINES = 3;
+const MITIGATION_LINES = 3;
 
 interface RiskPlan {
   risk: Risk;
   index: number;
-  severity: ReturnType<typeof measureText>;
-  text: ReturnType<typeof measureText>;
-  mitigation: ReturnType<typeof measureText> | null;
+  headline: ReturnType<typeof clampLines>;
+  mitigation: ReturnType<typeof clampLines> | null;
   height: number;
 }
 
 function planRisk(risk: Risk, index: number): RiskPlan {
-  const severity = measureText(risk.severity.toUpperCase(), TYPE_SCALE.small, INNER);
-  const text = measureText(risk.text, TYPE_SCALE.body, INNER);
+  const headline = clampLines(risk.text, TYPE_SCALE.body, INNER, HEADLINE_LINES);
   const mitigation = risk.mitigation
-    ? measureText(`→  ${risk.mitigation}`, TYPE_SCALE.small, INNER)
+    ? clampLines(`→ ${risk.mitigation}`, TYPE_SCALE.small, INNER, MITIGATION_LINES)
     : null;
-  let height = METRICS.cardPadding + severity.height + 6 + text.height;
-  if (mitigation) height += 8 + mitigation.height;
+
+  let height = METRICS.cardPadding + METRICS.riskIconSize + 8 + headline.height;
+  if (mitigation) height += 4 + mitigation.height;
   height += METRICS.cardPadding;
-  return { risk, index, severity, text, mitigation, height };
+
+  return { risk, index, headline, mitigation, height };
 }
 
 /**
- * Risks and out-of-scope. The out-of-scope list is not filler: an agent's
- * unstated assumption about what it isn't doing is one of the most common
- * reasons a plan looks fine and the result doesn't.
+ * Risks and out-of-scope. A warning triangle carries the severity colour at
+ * a glance; the risk text gets real room to read — up to three lines — since
+ * a risk that's been trimmed to a fragment doesn't tell a reviewer anything.
  */
 export function layoutRisks(ctx: RegionCtx): RegionResult {
   const { builder, spec } = ctx;
@@ -48,20 +45,19 @@ export function layoutRisks(ctx: RegionCtx): RegionResult {
   for (let i = 0; i < plans.length; i += COLUMNS) rows.push(plans.slice(i, i + COLUMNS));
   const rowHeights = rows.map((row) => Math.max(...row.map((p) => p.height)));
 
-  const scopeLines = spec.outOfScope.map((s) =>
-    measureText(`✕  ${s}`, TYPE_SCALE.body, inner - 16),
-  );
+  const scopeLines = spec.outOfScope;
   const scopeLabel = measureText("Explicitly out of scope", TYPE_SCALE.small, inner);
 
   let contentHeight =
-    rowHeights.reduce((a, b) => a + b, 0) +
-    Math.max(0, rows.length - 1) * METRICS.cardGap;
+    rowHeights.reduce((a, b) => a + b, 0) + Math.max(0, rows.length - 1) * METRICS.cardGap;
   if (plans.length === 0) {
     contentHeight += measureText("No risks flagged.", TYPE_SCALE.body, inner).height;
   }
   if (scopeLines.length > 0) {
     contentHeight += (plans.length > 0 ? 28 : 20) + scopeLabel.height + 8;
-    for (const line of scopeLines) contentHeight += line.height + 6;
+    for (const item of scopeLines) {
+      contentHeight += measureText(`✕  ${item}`, TYPE_SCALE.body, inner - 16).height + 6;
+    }
   }
 
   const frameHeight = contentHeight + 2 * pad;
@@ -110,50 +106,66 @@ export function layoutRisks(ctx: RegionCtx): RegionResult {
         height: rowHeight,
         strokeColor: style.stroke,
         backgroundColor: style.background,
+        strokeWidth: 1.5,
         ...shared,
       });
 
-      let inner2 = cursor + METRICS.cardPadding;
+      const iconX = x + METRICS.cardPadding;
+      const iconY = cursor + METRICS.cardPadding;
+      warningTriangle(builder, {
+        key: `risk::${plan.risk.id}::icon`,
+        role: "risk",
+        nodeId: plan.risk.id,
+        x: iconX,
+        y: iconY,
+        size: METRICS.riskIconSize,
+        color: style.stroke,
+        background: style.background,
+        ...shared,
+      });
       builder.text({
         key: `risk::${plan.risk.id}::severity`,
         role: "risk",
         nodeId: plan.risk.id,
-        x: x + METRICS.cardPadding,
-        y: inner2,
+        x: iconX + METRICS.riskIconSize + 8,
+        y: iconY + (METRICS.riskIconSize - TYPE_SCALE.small) / 2,
         text: plan.risk.severity.toUpperCase(),
         maxWidth: INNER,
         fontSize: TYPE_SCALE.small,
         color: style.stroke,
-        ...shared,
+        frameId: frame.id,
+        groupIds: [group],
       });
-      inner2 += plan.severity.height + 6;
 
+      let inner2 = iconY + METRICS.riskIconSize + 8;
       builder.text({
         key: `risk::${plan.risk.id}::text`,
         role: "risk",
         nodeId: plan.risk.id,
         x: x + METRICS.cardPadding,
         y: inner2,
-        text: plan.risk.text,
+        text: plan.headline.text,
         maxWidth: INNER,
         fontSize: TYPE_SCALE.body,
-        ...shared,
+        frameId: frame.id,
+        groupIds: [group],
       });
-      inner2 += plan.text.height;
+      inner2 += plan.headline.height;
 
       if (plan.mitigation) {
-        inner2 += 8;
+        inner2 += 4;
         builder.text({
           key: `risk::${plan.risk.id}::mitigation`,
           role: "risk",
           nodeId: plan.risk.id,
           x: x + METRICS.cardPadding,
           y: inner2,
-          text: `→  ${plan.risk.mitigation!}`,
+          text: plan.mitigation.text,
           maxWidth: INNER,
           fontSize: TYPE_SCALE.small,
           color: PALETTE.muted,
-          ...shared,
+          frameId: frame.id,
+          groupIds: [group],
         });
       }
     });

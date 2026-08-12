@@ -78,16 +78,26 @@ Beyond types:
 
 ## Canvas regions
 
-Rendered top to bottom, in reading order, each in a named Excalidraw frame:
+Rendered top to bottom, in reading order, each in a named Excalidraw frame. The canvas is
+illustration-led — a journey map, not a stack of index cards:
 
-1. **Goal** — title, goal, success criteria
-2. **Steps** — numbered cards, four per row, grouped so a drag moves the whole card
-3. **Decision forks** — question, then option cards side by side
-4. **Code surface** — dagre-laid dependency graph
-5. **Risks & out of scope**
+1. **Goal** — flag icon, title, goal, success criteria
+2. **Steps** — numbered waypoints on one connected path, left to right, each with a short
+   title plus a file glyph and a checkmark caption. Grouped, so dragging a waypoint moves the
+   whole step — that drag is the reorder signal.
+3. **Decision forks** — a diamond fanning into one lane per option. The chosen lane is solid
+   and bold, landing on a filled dot; rejected lanes are dashed and faded, landing on hollow
+   ones, with their rationale still readable.
+4. **Code surface** — dagre-laid dependency graph of icon-and-filename nodes, coloured by kind
+5. **Risks & out of scope** — each risk led by a severity-coloured warning triangle
 
-**Legend** sits to the right of the stack, documenting the annotation protocol for whoever
-opens the link cold.
+**Legend** sits to the right of the stack. It documents both halves of the contract: how to
+*read* the visual language (waypoint, diamond, solid vs. dashed lane, the icons) and how to
+*write* on it (the sticky colour protocol), for whoever opens the link cold.
+
+Captions wrap to two or three short lines and only ellipsize if they genuinely don't fit — the
+full text always stays in this spec, so write the sentence you mean rather than pre-truncating
+it. Filenames are the exception: they're identifiers, kept to one line.
 
 Empty sections render an explicit note ("No branch points — this plan has one obvious path")
 rather than a silent gap, so a reviewer can tell the difference between "nothing to say" and

@@ -1,78 +1,50 @@
 import { groupId } from "../ids.js";
-import { measureText } from "../text.js";
+import { clampLines, measureText } from "../text.js";
 import { METRICS, PALETTE, TYPE_SCALE } from "../theme.js";
 import type { Fork, ForkOption } from "../spec.js";
-import {
-  COLUMNS,
-  columnX,
-  contentWidth,
-  emptyNote,
-  type RegionCtx,
-  type RegionResult,
-} from "./common.js";
+import { contentWidth, emptyNote, type RegionCtx, type RegionResult } from "./common.js";
 
-const INNER = METRICS.cardWidth - 2 * METRICS.cardPadding;
+const DIAMOND = 26;
+const RATIONALE_LINES = 3;
 
 interface OptionPlan {
   option: ForkOption;
   index: number;
-  height: number;
   label: ReturnType<typeof measureText>;
-  rationale: ReturnType<typeof measureText>;
-  badge: ReturnType<typeof measureText>;
+  rationale: ReturnType<typeof clampLines>;
+  contentHeight: number;
 }
 
 interface ForkPlan {
   fork: Fork;
   question: ReturnType<typeof measureText>;
   options: OptionPlan[];
-  rowHeight: number;
-  height: number;
+  laneHeight: number;
+  blockHeight: number;
 }
 
-function planOption(option: ForkOption, index: number): OptionPlan {
-  const label = measureText(option.label, TYPE_SCALE.heading, INNER);
-  const rationale = measureText(option.rationale, TYPE_SCALE.body, INNER);
-  const badge = measureText(
-    option.chosen ? "✓  CHOSEN" : "✗  not taken",
-    TYPE_SCALE.small,
-    INNER,
-  );
-  const height =
-    METRICS.cardPadding +
-    badge.height +
-    8 +
-    label.height +
-    8 +
-    rationale.height +
-    METRICS.cardPadding;
-  return { option, index, height, label, rationale, badge };
-}
-
-function planFork(fork: Fork, width: number): ForkPlan {
-  const question = measureText(
-    `?  ${fork.question}`,
-    TYPE_SCALE.heading,
-    contentWidth(width),
-  );
-  const options = fork.options.map(planOption);
-  const rowHeight = Math.max(...options.map((o) => o.height));
-  const rows = Math.ceil(options.length / COLUMNS);
-  const height =
-    question.height +
-    14 +
-    rows * rowHeight +
-    Math.max(0, rows - 1) * METRICS.cardGap;
-  return { fork, question, options, rowHeight, height };
+function planFork(fork: Fork, labelWidth: number): ForkPlan {
+  const question = measureText(fork.question, TYPE_SCALE.heading, labelWidth + METRICS.laneLength);
+  const options = fork.options.map((option, index) => {
+    const label = measureText(option.label, TYPE_SCALE.body, labelWidth);
+    const rationale = clampLines(option.rationale, TYPE_SCALE.small, labelWidth, RATIONALE_LINES);
+    return { option, index, label, rationale, contentHeight: label.height + 4 + rationale.height };
+  });
+  // lane spacing adapts to whichever option in this fork needs the most room,
+  // so a two-line rationale never runs into the next lane down
+  const laneHeight = Math.max(METRICS.laneHeight, ...options.map((o) => o.contentHeight + 26));
+  const blockHeight = question.height + 14 + options.length * laneHeight;
+  return { fork, question, options, laneHeight, blockHeight };
 }
 
 /**
- * The Forks region: every decision point with the alternatives that were
- * considered, the chosen one marked, and the reasoning visible.
+ * The Forks region: every decision as a junction. A diamond marks the
+ * choice; each option is a lane peeling off it. The chosen lane is solid,
+ * bold, and lands on a filled dot. Every rejected lane is dashed, faded, and
+ * lands on a hollow one — still labelled, still legible, visibly not taken.
  *
- * This is the region that justifies the whole project. A text plan states the
- * conclusion; the trajectories it rejected stay in the model's head, which is
- * exactly where a reviewer can't see them.
+ * Rationale gets up to two real lines, not one truncated one — a reviewer
+ * should be able to read *why* a path was rejected, not just that it was.
  */
 export function layoutForks(ctx: RegionCtx): RegionResult {
   const { builder, spec } = ctx;
@@ -92,11 +64,13 @@ export function layoutForks(ctx: RegionCtx): RegionResult {
     return { width: ctx.width, height };
   }
 
-  const plans = spec.forks.map((f) => planFork(f, ctx.width));
+  const diamondX = ctx.x + pad + DIAMOND / 2;
+  const labelX = ctx.x + pad + DIAMOND + METRICS.laneStub + METRICS.laneLength + 14;
+  const labelWidth = Math.max(120, ctx.x + ctx.width - pad - labelX);
+
+  const plans = spec.forks.map((f) => planFork(f, labelWidth));
   const frameHeight =
-    2 * pad +
-    plans.reduce((a, p) => a + p.height, 0) +
-    Math.max(0, plans.length - 1) * (METRICS.cardGap + 16);
+    2 * pad + plans.reduce((a, p) => a + p.blockHeight, 0) + (plans.length - 1) * 28;
 
   const frame = builder.frame({
     key: "frame::forks",
@@ -111,97 +85,125 @@ export function layoutForks(ctx: RegionCtx): RegionResult {
 
   for (const plan of plans) {
     const fork = plan.fork;
-    const suffix = fork.atStep ? `  (step ${fork.atStep})` : "";
+    const suffix = fork.atStep ? `  ·  step ${fork.atStep}` : "";
     builder.text({
       key: `fork::${fork.id}::question`,
       role: "fork",
       nodeId: fork.id,
       x: ctx.x + pad,
       y: cursor,
-      text: `?  ${fork.question}${suffix}`,
+      text: `${fork.question}${suffix}`,
       maxWidth: contentWidth(ctx.width),
       fontSize: TYPE_SCALE.heading,
       frameId: frame.id,
     });
     cursor += plan.question.height + 14;
 
-    plan.options.forEach((op, i) => {
-      const column = i % COLUMNS;
-      const row = Math.floor(i / COLUMNS);
-      const x = columnX(ctx.x, column);
-      const y = cursor + row * (plan.rowHeight + METRICS.cardGap);
+    const n = plan.options.length;
+    const laneTop = cursor;
+    const diamondY = laneTop + ((n - 1) * plan.laneHeight) / 2 + plan.laneHeight / 2;
+
+    builder.rect({
+      key: `fork::${fork.id}::diamond`,
+      role: "fork",
+      nodeId: fork.id,
+      type: "diamond",
+      x: diamondX - DIAMOND / 2,
+      y: diamondY - DIAMOND / 2,
+      width: DIAMOND,
+      height: DIAMOND,
+      strokeColor: PALETTE.ink,
+      backgroundColor: PALETTE.bgWhite,
+      strokeWidth: 2.5,
+      frameId: frame.id,
+    });
+
+    plan.options.forEach((op) => {
       const chosen = op.option.chosen;
+      const laneY = laneTop + op.index * plan.laneHeight + plan.laneHeight / 2;
+      const stroke = chosen ? PALETTE.strokeGreen : PALETTE.muted;
+      const opacity = chosen ? 100 : 65;
       const group = groupId(spec.id, `fork-option::${fork.id}::${op.option.id}`);
       const shared = { frameId: frame.id, groupIds: [group] };
 
+      builder.path({
+        key: `fork-option::${fork.id}::${op.option.id}::stub`,
+        role: "fork-option",
+        nodeId: `${fork.id}:${op.option.id}`,
+        points: [
+          { x: diamondX, y: diamondY },
+          { x: ctx.x + pad + DIAMOND + METRICS.laneStub, y: laneY },
+        ],
+        strokeColor: stroke,
+        strokeWidth: chosen ? 2.5 : 1.5,
+        strokeStyle: chosen ? "solid" : "dashed",
+        opacity,
+        ...shared,
+      });
+      builder.path({
+        key: `fork-option::${fork.id}::${op.option.id}::lane`,
+        role: "fork-option",
+        nodeId: `${fork.id}:${op.option.id}`,
+        points: [
+          { x: ctx.x + pad + DIAMOND + METRICS.laneStub, y: laneY },
+          { x: labelX - 14, y: laneY },
+        ],
+        strokeColor: stroke,
+        strokeWidth: chosen ? 2.5 : 1.5,
+        strokeStyle: chosen ? "solid" : "dashed",
+        opacity,
+        ...shared,
+      });
+
+      const tr = METRICS.laneTerminusRadius;
       builder.rect({
-        key: `fork-option::${fork.id}::${op.option.id}`,
+        key: `fork-option::${fork.id}::${op.option.id}::terminus`,
         role: "fork-option",
         nodeId: `${fork.id}:${op.option.id}`,
         ordinal: op.index,
-        x,
-        y,
-        width: METRICS.cardWidth,
-        height: plan.rowHeight,
-        strokeColor: chosen ? PALETTE.strokeGreen : PALETTE.muted,
+        type: "ellipse",
+        x: labelX - 14 - tr,
+        y: laneY - tr,
+        width: tr * 2,
+        height: tr * 2,
+        strokeColor: stroke,
         backgroundColor: chosen ? PALETTE.bgGreen : PALETTE.transparent,
-        strokeStyle: chosen ? "solid" : "dashed",
-        strokeWidth: chosen ? 2 : 1,
-        opacity: chosen ? 100 : 60,
+        strokeWidth: 2,
+        opacity,
         ...shared,
       });
 
-      let inner = y + METRICS.cardPadding;
-      builder.text({
-        key: `fork-option::${fork.id}::${op.option.id}::badge`,
-        role: "fork-option",
-        nodeId: `${fork.id}:${op.option.id}`,
-        x: x + METRICS.cardPadding,
-        y: inner,
-        text: chosen ? "✓  CHOSEN" : "✗  not taken",
-        maxWidth: INNER,
-        fontSize: TYPE_SCALE.small,
-        color: chosen ? PALETTE.strokeGreen : "#868e96",
-        opacity: chosen ? 100 : 60,
-        ...shared,
-      });
-      inner += op.badge.height + 8;
-
+      // label + rationale as one block, vertically centred on the lane
+      const blockTop = laneY - op.contentHeight / 2;
       builder.text({
         key: `fork-option::${fork.id}::${op.option.id}::label`,
         role: "fork-option",
         nodeId: `${fork.id}:${op.option.id}`,
-        x: x + METRICS.cardPadding,
-        y: inner,
+        x: labelX,
+        y: blockTop,
         text: op.option.label,
-        maxWidth: INNER,
-        fontSize: TYPE_SCALE.heading,
-        opacity: chosen ? 100 : 60,
+        maxWidth: labelWidth,
+        fontSize: TYPE_SCALE.body,
+        color: chosen ? PALETTE.ink : PALETTE.muted,
+        opacity,
         ...shared,
       });
-      inner += op.label.height + 8;
-
       builder.text({
         key: `fork-option::${fork.id}::${op.option.id}::rationale`,
         role: "fork-option",
         nodeId: `${fork.id}:${op.option.id}`,
-        x: x + METRICS.cardPadding,
-        y: inner,
-        text: op.option.rationale,
-        maxWidth: INNER,
-        fontSize: TYPE_SCALE.body,
+        x: labelX,
+        y: blockTop + op.label.height + 4,
+        text: op.rationale.text,
+        maxWidth: labelWidth,
+        fontSize: TYPE_SCALE.small,
         color: PALETTE.muted,
-        opacity: chosen ? 100 : 60,
+        opacity,
         ...shared,
       });
     });
 
-    const rows = Math.ceil(plan.options.length / COLUMNS);
-    cursor +=
-      rows * plan.rowHeight +
-      Math.max(0, rows - 1) * METRICS.cardGap +
-      METRICS.cardGap +
-      16;
+    cursor += n * plan.laneHeight + 28;
   }
 
   return { width: ctx.width, height: frameHeight };

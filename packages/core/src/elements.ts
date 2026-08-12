@@ -2,12 +2,14 @@ import { createIndexGenerator, elementId, seedFor } from "./ids.js";
 import { FONT, LINE_HEIGHT, METRICS, PALETTE, TYPE_SCALE } from "./theme.js";
 import { measureText } from "./text.js";
 import type {
+  Arrowhead,
   BoundElement,
   CustomData,
   ExcalidrawArrowElement,
   ExcalidrawElement,
   ExcalidrawElementBase,
   ExcalidrawFrameElement,
+  ExcalidrawLinearElement,
   ExcalidrawShapeElement,
   ExcalidrawTextElement,
   FillStyle,
@@ -61,6 +63,7 @@ export interface CardArgs extends Omit<BaseArgs, "role" | "height"> {
   textAlign?: TextAlign;
   verticalAlign?: VerticalAlign;
   textColor?: string;
+  shape?: "rectangle" | "ellipse" | "diamond";
 }
 
 export interface TextArgs {
@@ -92,6 +95,28 @@ export interface ArrowArgs {
   strokeStyle?: StrokeStyle;
   opacity?: number;
   frameId?: string | null;
+}
+
+export interface PathArgs {
+  key: string;
+  /** absolute scene coordinates; two points is a straight segment, more is a polyline */
+  points: { x: number; y: number }[];
+  role?: GameplanMeta["role"];
+  nodeId?: string;
+  strokeColor?: string;
+  strokeWidth?: number;
+  strokeStyle?: StrokeStyle;
+  roughness?: number;
+  opacity?: number;
+  frameId?: string | null;
+  locked?: boolean;
+  groupIds?: string[];
+  startArrowhead?: Arrowhead;
+  endArrowhead?: Arrowhead;
+  /** appends the first point at the end and fills the enclosed area — for icon glyphs */
+  closed?: boolean;
+  backgroundColor?: string;
+  fillStyle?: FillStyle;
 }
 
 /**
@@ -223,7 +248,7 @@ export class SceneBuilder {
 
     const container: ExcalidrawShapeElement = {
       ...this.base({ ...args, height }),
-      type: "rectangle",
+      type: args.shape ?? "rectangle",
     };
 
     const textId = elementId(this.opts.planId, `${args.key}::text`);
@@ -366,6 +391,63 @@ export class SceneBuilder {
     bind(from, { id: el.id, type: "arrow" });
     bind(to, { id: el.id, type: "arrow" });
 
+    return this.push(el);
+  }
+
+  /**
+   * A positional polyline: the journey spine through steps, a fork's branch
+   * lanes, an icon's strokes. Unlike `arrow()`, endpoints aren't bound to
+   * shape elements — coordinates are absolute and fixed, which is what a
+   * decorative or illustrative line needs.
+   */
+  path(args: PathArgs): ExcalidrawLinearElement | ExcalidrawArrowElement {
+    const points = args.closed && args.points.length > 1
+      ? [...args.points, args.points[0]!]
+      : args.points;
+    const xs = points.map((p) => p.x);
+    const ys = points.map((p) => p.y);
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+    const relPoints: [number, number][] = points.map((p) => [
+      Math.round(p.x - minX),
+      Math.round(p.y - minY),
+    ]);
+
+    const base = this.base({
+      key: args.key,
+      role: args.role ?? "decor",
+      nodeId: args.nodeId,
+      x: minX,
+      y: minY,
+      width: Math.max(1, Math.max(...xs) - minX),
+      height: Math.max(1, Math.max(...ys) - minY),
+      strokeColor: args.strokeColor ?? PALETTE.ink,
+      backgroundColor: args.backgroundColor ?? PALETTE.transparent,
+      fillStyle: args.fillStyle ?? "solid",
+      strokeWidth: args.strokeWidth ?? 2,
+      strokeStyle: args.strokeStyle ?? "solid",
+      roughness: args.roughness ?? 1,
+      opacity: args.opacity ?? 100,
+      roundness: null,
+      frameId: args.frameId ?? null,
+      locked: args.locked ?? false,
+      groupIds: args.groupIds,
+    });
+    const shared = {
+      ...base,
+      points: relPoints,
+      lastCommittedPoint: null,
+      startBinding: null,
+      endBinding: null,
+      startArrowhead: args.startArrowhead ?? null,
+      endArrowhead: args.endArrowhead ?? null,
+    };
+
+    if (args.startArrowhead || args.endArrowhead) {
+      const el: ExcalidrawArrowElement = { ...shared, type: "arrow", elbowed: false };
+      return this.push(el);
+    }
+    const el: ExcalidrawLinearElement = { ...shared, type: "line" };
     return this.push(el);
   }
 

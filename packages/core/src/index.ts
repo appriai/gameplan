@@ -5,5 +5,6 @@ export * from "./metrics.js";
 export * from "./text.js";
 export * from "./ids.js";
 export * from "./elements.js";
+export * from "./icons.js";
 export * from "./render.js";
 export * from "./feedback.js";

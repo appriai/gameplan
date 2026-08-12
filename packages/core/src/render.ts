@@ -63,10 +63,15 @@ export function renderPlan(spec: PlanSpec, options: RenderOptions = {}): RenderR
     renderedAt: now,
   });
 
+  // regions size themselves to their content — a long journey path can
+  // exceed CANVAS_WIDTH — so the legend's x has to track the widest one
+  // actually drawn, not the nominal grid width, or a big plan collides with it
   let y = 0;
+  let maxWidth = CANVAS_WIDTH;
   for (const region of REGIONS) {
     const result = region({ builder, spec, x: 0, y, width: CANVAS_WIDTH });
     y += result.height + METRICS.frameGap;
+    maxWidth = Math.max(maxWidth, result.width);
   }
 
   // legend sits to the right of the stack, out of the reading path but always
@@ -74,7 +79,7 @@ export function renderPlan(spec: PlanSpec, options: RenderOptions = {}): RenderR
   layoutLegend({
     builder,
     spec,
-    x: CANVAS_WIDTH + METRICS.frameGap,
+    x: maxWidth + METRICS.frameGap,
     y: 0,
     width: 340,
   });

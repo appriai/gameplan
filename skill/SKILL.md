@@ -110,7 +110,7 @@ filler.
 `gameplan wait` and `gameplan feedback` print feedback keyed to **your spec's node ids**:
 
 - **REMOVE** — a card was deleted or scribbled out. Drop that step/risk/option.
-- **REORDER** — step cards were dragged. Use the new order.
+- **REORDER** — step waypoints were dragged. Use the new order.
 - **REWRITE** — text was edited in place. Take their words.
 - **REJECT / ADD / QUESTION / APPROVE** — sticky notes, each anchored to a card.
 

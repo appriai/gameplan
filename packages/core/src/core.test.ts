@@ -227,10 +227,11 @@ describe("render", () => {
 
   it("marks exactly one fork option as chosen per fork", () => {
     const { scene } = renderPlan(loadExample(), { now: FIXED_NOW });
+    // the chosen option's lane lands on a filled green terminus dot
     const chosen = scene.elements.filter(
       (e) =>
         e.customData?.gameplan?.role === "fork-option" &&
-        e.type === "rectangle" &&
+        e.type === "ellipse" &&
         e.backgroundColor === PALETTE.bgGreen,
     );
     expect(chosen).toHaveLength(2);
@@ -274,12 +275,13 @@ function annotate(
   return { ...base, ...overrides } as ExcalidrawElement;
 }
 
+/** The waypoint dot for a step — an ellipse now, not a card. */
 function stepCard(scene: ExcalidrawScene, nodeId: string): ExcalidrawElement {
   return scene.elements.find(
     (e) =>
       e.customData?.gameplan?.role === "step" &&
       e.customData.gameplan.nodeId === nodeId &&
-      e.type === "rectangle",
+      e.type === "ellipse",
   )!;
 }
 
@@ -298,20 +300,24 @@ describe("feedback", () => {
   it("reads intent from the sticky's background colour", () => {
     const { scene, snapshot } = base();
     const card = stepCard(scene, "degrade");
+    // sized and centred to land inside the small waypoint dot, so this
+    // exercises the containment path rather than falling through to proximity
+    const cx = card.x + card.width / 2;
+    const cy = card.y + card.height / 2;
     scene.elements.push(
       annotate(scene, {
         id: "note-1",
-        x: card.x + 10,
-        y: card.y + 10,
-        width: 80,
-        height: 40,
+        x: cx - 10,
+        y: cy - 10,
+        width: 20,
+        height: 20,
         backgroundColor: PALETTE.bgRed,
       }),
       annotate(scene, {
         id: "note-1-text",
         type: "text",
-        x: card.x + 12,
-        y: card.y + 12,
+        x: cx - 9,
+        y: cy - 9,
         text: "fail-open is a security decision, not a detail",
         originalText: "fail-open is a security decision, not a detail",
         containerId: "note-1",

@@ -91,4 +91,22 @@ export const METRICS = {
   frameGap: 100,
   /** Excalidraw's own padding for text bound inside a container. */
   boundTextPadding: 5,
+
+  // journey-map: steps as waypoints on a path, not cards in a grid
+  waypointRadius: 22,
+  stepPitch: 210,
+  iconSize: 20,
+
+  // journey-map: forks as a diamond fanning into stacked lanes
+  laneHeight: 68,
+  laneStub: 46,
+  laneLength: 190,
+  laneTerminusRadius: 9,
+
+  // journey-map: surface nodes as small icon+label, not padded cards
+  surfaceIconSize: 26,
+  surfaceNodeWidth: 190,
+
+  // journey-map: risk cards, icon-first
+  riskIconSize: 24,
 } as const;

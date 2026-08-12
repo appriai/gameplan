@@ -16,7 +16,7 @@ what it refers to.
 | Drop a **yellow** sticky | question, unclear to me | `QUESTION` comment |
 | Drop a **blue** sticky | this is missing | `ADD` comment |
 | Drag an arrow sticky → card | pins the note to that card | anchor `via: arrow` |
-| Drag a step card elsewhere | reorder the steps | `REORDER` |
+| Drag a step waypoint elsewhere | reorder the steps | `REORDER` |
 | Scribble over a card | kill it | `REMOVE`, reason `struck` |
 | Delete a card | drop it entirely | `REMOVE`, reason `deleted` |
 | Edit text in place | rewrite it | `REWRITE` |
@@ -57,7 +57,7 @@ human one verbatim. Stickies stay where they were put. This matters: re-renderin
 plan must not throw away the feedback that prompted the revision.
 
 Element ids are derived deterministically from the plan id and the node's logical key, so a
-step card keeps the same id across revisions and the annotations anchored to it stay anchored.
+step waypoint keeps the same id across revisions and the annotations anchored to it stay anchored.
 
 ## What isn't detected
 
