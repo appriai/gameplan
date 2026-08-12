@@ -159,16 +159,22 @@ silently ignoring a reviewer's objection is worse than pushing back on it.
 ## Commands
 
 ```
-gameplan render <spec.yaml> [--open]     render a plan; prints local + LAN URLs
-gameplan draw <diagram.yaml> [--open]    draw a freestyle diagram, own URL
+gameplan render <spec.yaml> [--open] [--tunnel]   render a plan; prints local + LAN URLs
+gameplan draw <diagram.yaml> [--open] [--tunnel]  draw a freestyle diagram, own URL
 gameplan wait <id> [--timeout s]         block until reviewers submit (default 1800s)
 gameplan feedback <id> [--json]          read the canvas now, without waiting
 gameplan list                            plans and diagrams on the server
-gameplan status | stop                   server lifecycle
+gameplan tunnel [id] | tunnel stop       share publicly via Cloudflare, or stop sharing
+gameplan status | stop                   server (and tunnel) lifecycle
 ```
 
 The server autostarts on first use and keeps running, so the URL stays live while the humans
 take their time. Plans and diagrams persist under `.gameplan/` in the working directory.
+
+`--tunnel` reaches beyond the LAN — an unauthenticated `*.trycloudflare.com` URL anyone with the
+link can view and edit. Reach for it only when a reviewer genuinely isn't on the LAN, and tell
+the user you're about to expose the canvas publicly before you do. `gameplan tunnel stop` (or
+`gameplan stop`) when the review is done; it doesn't close itself.
 
 ## Details
 

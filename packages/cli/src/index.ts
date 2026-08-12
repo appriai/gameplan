@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { parseDiagramYaml, parseSpecYaml, SpecError, type FeedbackReport } from "@gameplan/core";
 import { api, DATA_DIR, DEFAULT_PORT, ensureServer, health, stopServer } from "./daemon.js";
 import { formatReport } from "./report.js";
+import { cloudflaredAvailable, ensureTunnel, stopTunnel, tunnelStatus } from "./tunnel.js";
 
 type DocKind = "plan" | "diagram";
 
@@ -13,6 +14,7 @@ interface Flags {
   open: boolean;
   json: boolean;
   timeout: number;
+  tunnel: boolean;
   positional: string[];
 }
 
@@ -22,6 +24,7 @@ function parseArgs(argv: string[]): Flags {
     open: false,
     json: false,
     timeout: 1800,
+    tunnel: false,
     positional: [],
   };
   for (let i = 0; i < argv.length; i++) {
@@ -32,6 +35,9 @@ function parseArgs(argv: string[]): Flags {
         break;
       case "--json":
         flags.json = true;
+        break;
+      case "--tunnel":
+        flags.tunnel = true;
         break;
       case "--port":
         flags.port = Number(argv[++i]);
@@ -49,17 +55,24 @@ function parseArgs(argv: string[]): Flags {
 
 const USAGE = `gameplan — review agent plans and diagrams on a live Excalidraw canvas
 
-  gameplan render <spec.yaml> [--open]     render a plan and print its URLs
-  gameplan draw <diagram.yaml> [--open]    draw a freestyle diagram, own URL
+  gameplan render <spec.yaml> [--open] [--tunnel]   render a plan, print its URLs
+  gameplan draw <diagram.yaml> [--open] [--tunnel]  draw a diagram, own URL
   gameplan wait <id> [--timeout s]         block until reviewers send feedback
   gameplan feedback <id> [--json]          read the current canvas as feedback
   gameplan list                            list plans and diagrams on the server
-  gameplan open <id>                       open the canvas in a browser
-  gameplan status                          is the server up?
-  gameplan stop                            stop the server
+  gameplan open <id> [--tunnel]            open the canvas in a browser
+  gameplan tunnel [id]                     share the server (or one canvas) publicly
+  gameplan tunnel stop                     tear down the public tunnel
+  gameplan status                          is the server (and tunnel) up?
+  gameplan stop                            stop the server and any tunnel
 
   wait / feedback / open take either a plan id or a diagram id — the server
   is checked to see which one it is, so you don't need to say which.
+
+  --tunnel shares the canvas beyond your LAN via a Cloudflare quick tunnel —
+  an unauthenticated *.trycloudflare.com URL, anyone with the link has full
+  read/write access. Requires \`cloudflared\` on PATH. Run \`gameplan tunnel stop\`
+  when you're done sharing; it does not close itself.
 
   --port <n>     server port (default ${DEFAULT_PORT}, or $GAMEPLAN_PORT)
   data directory: ${DATA_DIR} (or $GAMEPLAN_DATA)
@@ -77,6 +90,24 @@ async function resolveKind(port: number, id: string): Promise<DocKind> {
   } catch {
     return "diagram";
   }
+}
+
+function docPath(kind: DocKind, id: string): string {
+  return kind === "plan" ? `/p/${id}` : `/d/${id}`;
+}
+
+/** Ensures a tunnel is up and prints the warning + public URL for one document. */
+async function printTunnel(port: number, kind: DocKind, id: string): Promise<void> {
+  if (!cloudflaredAvailable()) {
+    console.error(
+      "  --tunnel requires `cloudflared` on PATH — see https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/",
+    );
+    return;
+  }
+  console.log("  starting tunnel (cloudflared)...");
+  const base = await ensureTunnel(port);
+  console.log(`  public:   ${base}${docPath(kind, id)}`);
+  console.log("            ⚠ unauthenticated — anyone with this link can edit it");
 }
 
 function openBrowser(url: string): void {
@@ -135,6 +166,7 @@ async function create(flags: Flags, kind: DocKind): Promise<number> {
   console.log("");
   console.log(`  you:      ${result.local}`);
   if (result.lan) console.log(`  your team: ${result.lan}`);
+  if (flags.tunnel) await printTunnel(port, kind, result.id);
   if (kind === "plan") {
     console.log("");
     console.log(`Waiting on review? \`gameplan wait ${result.id}\``);
@@ -247,7 +279,7 @@ async function cmdList(flags: Flags): Promise<number> {
 async function cmdOpen(flags: Flags): Promise<number> {
   const id = flags.positional[0];
   if (!id) {
-
+    console.error("usage: gameplan open <id> [--tunnel]");
     return 2;
   }
   const port = await ensureServer(flags.port);
@@ -255,12 +287,46 @@ async function cmdOpen(flags: Flags): Promise<number> {
   const doc = await api<{ local: string; lan?: string }>(port, `${apiPrefix(kind)}/${id}`);
   console.log(doc.local);
   if (doc.lan) console.log(doc.lan);
+  if (flags.tunnel) await printTunnel(port, kind, id);
   openBrowser(doc.local);
+  return 0;
+}
+
+async function cmdTunnel(flags: Flags): Promise<number> {
+  if (flags.positional[0] === "stop") {
+    const stopped = await stopTunnel();
+    console.log(stopped ? "tunnel stopped" : "no tunnel to stop");
+    return stopped ? 0 : 1;
+  }
+
+  const id = flags.positional[0];
+  const port = await ensureServer(flags.port);
+
+  if (!cloudflaredAvailable()) {
+    console.error(
+      "cloudflared is not installed — see https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/",
+    );
+    return 1;
+  }
+
+  console.log("starting tunnel (cloudflared)...");
+  const base = await ensureTunnel(port);
+
+  if (id) {
+    const kind = await resolveKind(port, id);
+    console.log(`public: ${base}${docPath(kind, id)}`);
+  } else {
+    console.log(`public: ${base}`);
+    console.log("(append /p/<plan-id> or /d/<diagram-id> to share a specific canvas)");
+  }
+  console.log("⚠ unauthenticated — anyone with this link can view and edit");
+  console.log("`gameplan tunnel stop` when you're done sharing");
   return 0;
 }
 
 async function cmdStatus(flags: Flags): Promise<number> {
   const status = await health(flags.port);
+  const tunnel = await tunnelStatus();
   if (!status) {
     console.log(`server not running on port ${flags.port}`);
     return 1;
@@ -268,10 +334,15 @@ async function cmdStatus(flags: Flags): Promise<number> {
   console.log(
     `server up on port ${flags.port} (pid ${status.pid}, ${status.plans} plan(s), ${status.diagrams ?? 0} diagram(s))`,
   );
+  console.log(tunnel ? `tunnel up: ${tunnel.url}` : "tunnel: not running");
   return 0;
 }
 
 async function cmdStop(flags: Flags): Promise<number> {
+  // stop everything, including anything shared publicly — leaving a tunnel
+  // up after "stopping gameplan" would be a quiet way to keep it exposed
+  const tunnelStopped = await stopTunnel();
+  if (tunnelStopped) console.log("tunnel stopped");
   const stopped = await stopServer(flags.port);
   console.log(stopped ? "server stopped" : "no server to stop");
   return stopped ? 0 : 1;
@@ -298,6 +369,8 @@ async function main(): Promise<number> {
       return cmdList(flags);
     case "open":
       return cmdOpen(flags);
+    case "tunnel":
+      return cmdTunnel(flags);
     case "status":
       return cmdStatus(flags);
     case "stop":

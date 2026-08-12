@@ -45,9 +45,33 @@ bridges. It can still guess wrong.
 - Check the address is on the same network as your reviewers: `ip addr` / `ifconfig`.
 - Inside Docker or a devcontainer, the printed IP is usually the container's, not the host's.
   Publish the port (`-p 3939:3939`) and hand out the host's address instead.
-- Remote reviewers need a tunnel — `cloudflared tunnel --url http://localhost:3939` or
-  `ngrok http 3939`. There is no auth on the server; it's a local dev tool, so don't leave a
-  tunnel open longer than the review.
+- For a reviewer outside your LAN entirely, use `--tunnel` — see below — rather than reaching
+  for `ngrok`/`cloudflared` by hand.
+
+## Sharing beyond the LAN with `--tunnel`
+
+`gameplan render/draw/open --tunnel`, or `gameplan tunnel [id]` against an already-running
+server, opens a Cloudflare **quick tunnel**: an account-less, unauthenticated
+`https://<random-words>.trycloudflare.com` URL that proxies straight to your local server.
+Requires `cloudflared` on PATH (`apt install cloudflared`, `brew install cloudflared`, or
+https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/).
+
+- **There's no auth in front of it.** The random hostname is the only thing protecting whatever
+  plan or diagram it's serving — anyone with the link has full read/write access, same as a
+  local reviewer. Treat the link like you'd treat a paste of the plan's contents: fine for a
+  quick review with someone specific, not for anything sensitive or long-lived.
+- The tunnel is a separate process from the gameplan server; it does **not** stop on its own.
+  Run `gameplan tunnel stop` when you're done, or `gameplan stop` (which tears down both).
+  `gameplan status` shows whether one is currently up.
+- **The tunnel process must not inherit a pipe back to the CLI.** If you're modifying
+  `packages/cli/src/tunnel.ts`, keep `cloudflared`'s stderr redirected to a real file
+  (`.gameplan/tunnel.log`), not `stdio: "pipe"`. A piped stream's read end lives in the CLI
+  process, which exits immediately after printing the URL — the next time `cloudflared` writes
+  a log line, it gets SIGPIPE'd and the "running" tunnel is actually already dead. This exact
+  bug shipped once; the fix is the log-file redirect plus polling that file for the URL.
+- If `--tunnel` reports a URL but it 530s, the tunnel died after starting — check
+  `.gameplan/tunnel.log` for why (usually the local server isn't actually up on the port
+  `cloudflared` was pointed at).
 
 ## The canvas is empty or stuck
 

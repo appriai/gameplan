@@ -19,6 +19,11 @@ Freestyle diagrams — not a plan review, just "draw this" — get their own sta
 gameplan draw architecture.yaml --open   # own URL (/d/<id>), same collab + annotation protocol
 ```
 
+For a reviewer outside your LAN, add `--tunnel` (needs `cloudflared` on PATH) to get a public
+`*.trycloudflare.com` URL. It's unauthenticated — anyone with the link can edit — so it's opt-in
+per command, not automatic, and `gameplan tunnel stop` (or `gameplan stop`) tears it down; it
+does not expire on its own.
+
 ## Install
 
 ```bash
