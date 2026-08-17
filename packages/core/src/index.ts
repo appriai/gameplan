@@ -1,3 +1,4 @@
+export * from "./errors.js";
 export * from "./spec.js";
 export * from "./diagram.js";
 export * from "./excalidraw.js";

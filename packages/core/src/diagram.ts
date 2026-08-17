@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { parse as parseYaml } from "yaml";
-import { SpecError } from "./spec.js";
+import { SpecError } from "./errors.js";
 
 /**
  * A DiagramSpec is a freestyle counterpart to PlanSpec: not a review of a
@@ -22,10 +22,18 @@ export type DiagramIcon = z.infer<typeof DiagramIcon>;
 export const DiagramColor = z.enum(["ink", "green", "blue", "red", "yellow", "violet", "grey"]);
 export type DiagramColor = z.infer<typeof DiagramColor>;
 
-const DiagramBase = z.object({
+/**
+ * What every diagram has regardless of where it lives. `revision` is *not*
+ * here: a standalone diagram owns its own revision, while one embedded in a
+ * plan is versioned by the plan around it.
+ */
+const DiagramIdentity = z.object({
   id: nodeId,
   title: z.string().min(1),
   note: z.string().optional(),
+});
+
+const DiagramBase = DiagramIdentity.extend({
   revision: z.number().int().nonnegative().default(1),
 });
 
@@ -56,14 +64,17 @@ export const GraphCluster = z.object({
 });
 export type GraphCluster = z.infer<typeof GraphCluster>;
 
-export const GraphDiagram = DiagramBase.extend({
+/** The graph layout's own fields, independent of where the diagram lives. */
+const GRAPH_BODY = {
   layout: z.literal("graph"),
   /** LR reads like a pipeline; TB reads like a hierarchy */
   direction: z.enum(["LR", "TB"]).default("LR"),
   nodes: z.array(GraphNode).min(1),
   edges: z.array(GraphEdge).default([]),
   clusters: z.array(GraphCluster).default([]),
-});
+} as const;
+
+export const GraphDiagram = DiagramBase.extend(GRAPH_BODY);
 export type GraphDiagram = z.infer<typeof GraphDiagram>;
 
 // ------------------------------------------------------------- sequence
@@ -83,19 +94,38 @@ export const SequenceMessage = z.object({
 });
 export type SequenceMessage = z.infer<typeof SequenceMessage>;
 
-export const SequenceDiagram = DiagramBase.extend({
+/** The sequence layout's own fields, independent of where the diagram lives. */
+const SEQUENCE_BODY = {
   layout: z.literal("sequence"),
   actors: z.array(SequenceActor).min(2),
   messages: z.array(SequenceMessage).min(1),
-});
+} as const;
+
+export const SequenceDiagram = DiagramBase.extend(SEQUENCE_BODY);
 export type SequenceDiagram = z.infer<typeof SequenceDiagram>;
 
 // ------------------------------------------------------------------ any
 
+/** A standalone diagram, rendered by `gameplan draw` at its own URL. */
 export const DiagramSpec = z.discriminatedUnion("layout", [GraphDiagram, SequenceDiagram]);
 export type DiagramSpec = z.infer<typeof DiagramSpec>;
 
-function checkReferences(spec: DiagramSpec): string[] {
+/**
+ * The same diagram embedded inside a PlanSpec — identical drawing fields,
+ * but versioned by the plan rather than carrying its own `revision`.
+ */
+export const PlanDiagram = z.discriminatedUnion("layout", [
+  DiagramIdentity.extend(GRAPH_BODY),
+  DiagramIdentity.extend(SEQUENCE_BODY),
+]);
+export type PlanDiagram = z.infer<typeof PlanDiagram>;
+
+/**
+ * Dangling-reference checks over a diagram's body. Exported so a plan can run
+ * the same validation over each diagram it embeds — an edge pointing at a
+ * node that doesn't exist is exactly as broken either way.
+ */
+export function checkDiagramReferences(spec: DiagramSpec | PlanDiagram): string[] {
   const issues: string[] = [];
 
   if (spec.layout === "graph") {
@@ -144,7 +174,7 @@ export function parseDiagramSpec(input: unknown): DiagramSpec {
     );
     throw new SpecError(`invalid diagram spec:\n  ${issues.join("\n  ")}`, issues);
   }
-  const refIssues = checkReferences(result.data);
+  const refIssues = checkDiagramReferences(result.data);
   if (refIssues.length > 0) {
     throw new SpecError(`invalid diagram spec:\n  ${refIssues.join("\n  ")}`, refIssues);
   }

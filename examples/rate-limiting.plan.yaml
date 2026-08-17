@@ -11,6 +11,58 @@ successCriteria:
   - The limiter degrades to allow-all if its backing store is unreachable
   - p99 latency added by the limiter stays under 2ms
 
+# An architecture diagram earns its place here because the plan's central
+# question — where the limiter sits in the request path — is a question about
+# shape, not about which files change. `surface` below still covers the latter.
+diagrams:
+  - id: request-path
+    title: Where the limiter sits in the request path
+    layout: graph
+    direction: LR
+    note: Dashed box is what this plan adds.
+    clusters:
+      - id: added
+        label: added by this plan
+    nodes:
+      - id: client
+        label: API client
+      - id: gateway
+        label: Edge gateway
+        icon: file
+        color: grey
+        note: Routes by path, can't see the API key
+      - id: limiter
+        label: Rate-limit middleware
+        icon: file
+        color: green
+        cluster: added
+      - id: redis
+        label: Redis
+        icon: file
+        color: blue
+        cluster: added
+        note: Sliding-window counters
+      - id: handler
+        label: Route handler
+        icon: file
+        color: grey
+    edges:
+      - from: client
+        to: gateway
+        label: HTTPS
+      - from: gateway
+        to: limiter
+      - from: limiter
+        to: redis
+        label: INCR + TTL
+      - from: limiter
+        to: handler
+        label: under quota
+      - from: limiter
+        to: client
+        label: 429 over quota
+        style: dashed
+
 forks:
   - id: store
     question: Where does the counter state live?

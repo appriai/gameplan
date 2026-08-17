@@ -3,7 +3,7 @@ import { METRICS, PALETTE, TYPE_SCALE } from "../theme.js";
 import type { SequenceDiagram } from "../diagram.js";
 import { centeredText } from "../layout/common.js";
 import type { SceneBuilder } from "../elements.js";
-import type { DiagramLayoutCtx, DiagramLayoutResult } from "./registry.js";
+import { scopedKey, scopedNodeId, type DiagramLayoutCtx, type DiagramLayoutResult } from "./registry.js";
 
 const LABEL_LINES = 2;
 
@@ -19,6 +19,8 @@ export function layoutSequence(
   ctx: DiagramLayoutCtx,
 ): DiagramLayoutResult {
   const pad = METRICS.framePadding;
+  const k = (key: string) => scopedKey(ctx, key);
+  const n = (id: string) => scopedNodeId(ctx, id);
   const laneWidth = METRICS.sequenceLaneWidth;
   const rowHeight = METRICS.sequenceRowHeight;
   const headerHeight = METRICS.sequenceActorHeight;
@@ -36,7 +38,7 @@ export function layoutSequence(
   // lifelines first, so actor headers and messages paint on top
   spec.actors.forEach((actor, i) => {
     builder.path({
-      key: `actor::${actor.id}::lifeline`,
+      key: k(`actor::${actor.id}::lifeline`),
       role: "decor",
       points: [
         { x: laneX(i), y: lifelineTop },
@@ -52,9 +54,9 @@ export function layoutSequence(
   spec.actors.forEach((actor, i) => {
     const x = laneX(i) - laneWidth / 2 + 10;
     builder.card({
-      key: `actor::${actor.id}`,
+      key: k(`actor::${actor.id}`),
       role: "diagram-node",
-      nodeId: actor.id,
+      nodeId: n(actor.id),
       x,
       y: headerY,
       width: laneWidth - 20,
@@ -75,7 +77,7 @@ export function layoutSequence(
     const fromX = laneX(fromI);
     const toX = laneX(toI);
     const dashed = msg.style === "return";
-    const key = `message::${row}`;
+    const key = k(`message::${row}`);
 
     if (fromI === toI) {
       // a self-call: a small loop out and back, since a zero-length arrow
@@ -84,7 +86,7 @@ export function layoutSequence(
       builder.path({
         key: `${key}::loop`,
         role: "diagram-node",
-        nodeId: `${msg.from}:${row}`,
+        nodeId: n(`${msg.from}:${row}`),
         points: [
           { x: fromX, y },
           { x: fromX + bump, y },
@@ -100,7 +102,7 @@ export function layoutSequence(
       builder.text({
         key: `${key}::label`,
         role: "diagram-node",
-        nodeId: `${msg.from}:${row}`,
+        nodeId: n(`${msg.from}:${row}`),
         x: fromX + bump + 6,
         y: y + 2,
         text: label.text,
@@ -115,7 +117,7 @@ export function layoutSequence(
     builder.path({
       key,
       role: "diagram-node",
-      nodeId: `${msg.from}:${msg.to}:${row}`,
+      nodeId: n(`${msg.from}:${msg.to}:${row}`),
       points: [
         { x: fromX, y },
         { x: toX, y },
@@ -130,7 +132,7 @@ export function layoutSequence(
     centeredText(builder, {
       key: `${key}::label`,
       role: "diagram-node",
-      nodeId: `${msg.from}:${msg.to}:${row}`,
+      nodeId: n(`${msg.from}:${msg.to}:${row}`),
       centerX: midX,
       y: y - 20,
       text: msg.label,

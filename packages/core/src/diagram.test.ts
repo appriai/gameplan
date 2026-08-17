@@ -162,6 +162,27 @@ describe("graph layout", () => {
     expect(JSON.stringify(a.scene)).toBe(JSON.stringify(b.scene));
   });
 
+  it("keeps edge labels clear of the nodes", () => {
+    // dagre reserves space for each label; the geometric midpoint used to put
+    // a spanning edge's label right on top of whatever node sat in the middle
+    const { scene } = renderDiagram(loadGraph(), { now: FIXED_NOW });
+    const nodes = scene.elements.filter(
+      (e) => e.customData?.gameplan?.role === "diagram-node" && e.type === "rectangle",
+    );
+    const labels = scene.elements.filter(
+      (e) => e.type === "text" && e.customData?.gameplan?.role === "decor",
+    );
+    expect(labels.length).toBeGreaterThan(0);
+    for (const label of labels) {
+      for (const node of nodes) {
+        const w = Math.min(label.x + label.width, node.x + node.width) - Math.max(label.x, node.x);
+        const h = Math.min(label.y + label.height, node.y + node.height) - Math.max(label.y, node.y);
+        const overlap = w > 0 && h > 0 ? w * h : 0;
+        expect(overlap, `"${(label as { originalText?: string }).originalText}" overlaps ${node.customData?.gameplan?.nodeId}`).toBe(0);
+      }
+    }
+  });
+
   it("tags every element with the diagram id", () => {
     const { scene } = renderDiagram(loadGraph(), { now: FIXED_NOW });
     for (const el of scene.elements) {

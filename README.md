@@ -13,6 +13,10 @@ gameplan render plan.yaml --open   # agent renders; prints a local URL and a LAN
 gameplan wait rate-limiting        # agent blocks, then gets structured feedback
 ```
 
+A plan can also carry its own diagrams, in a `diagrams:` array — rendered between the goal and
+the steps. If the change has a shape at all, draw it: the reviewer hasn't just read the code
+and a picture of where the change lands is what they need before they can judge the steps.
+
 Freestyle diagrams — not a plan review, just "draw this" — get their own standalone canvas:
 
 ```

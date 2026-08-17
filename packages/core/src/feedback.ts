@@ -273,9 +273,24 @@ function resolveAnchor(
 
   const point = centre(el);
 
+  /**
+   * Containment picks the *smallest* box the sticky sits in, not the first.
+   * Targets can nest — a diagram node lives inside a cluster — and the
+   * enclosing box is drawn first for z-order, so taking the first match would
+   * attribute every note on a node to the cluster around it. The innermost
+   * target is the specific thing the reviewer was pointing at.
+   */
+  let innermost: ExcalidrawElement | undefined;
+  let innermostArea = Infinity;
   for (const target of targets) {
-    if (contains(target, point)) return anchorTo(target, "containment");
+    if (!contains(target, point)) continue;
+    const area = target.width * target.height;
+    if (area < innermostArea) {
+      innermostArea = area;
+      innermost = target;
+    }
   }
+  if (innermost) return anchorTo(innermost, "containment");
 
   /**
    * Proximity is scoped to the enclosing region.
@@ -409,6 +424,6 @@ function collectReorders(
     .sort((a, b) => (gameplanMeta(a)!.ordinal ?? 0) - (gameplanMeta(b)!.ordinal ?? 0))
     .map((el) => gameplanMeta(el)!.nodeId!);
 
-  if (order.join(" ") === previous.join(" ")) return [];
+  if (order.join("|") === previous.join("|")) return [];
   return [{ region: "steps", order, previous }];
 }

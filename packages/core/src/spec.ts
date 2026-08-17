@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { parse as parseYaml } from "yaml";
+import { SpecError } from "./errors.js";
+import { checkDiagramReferences, PlanDiagram } from "./diagram.js";
 
 /**
  * The PlanSpec is the *only* thing an agent authors. It is deliberately
@@ -81,20 +83,20 @@ export const PlanSpec = z.object({
   forks: z.array(Fork).default([]),
   risks: z.array(Risk).default([]),
   outOfScope: z.array(z.string()).default([]),
+  /**
+   * Supporting pictures — an architecture graph, a request sequence. Same
+   * drawing vocabulary as a standalone `gameplan draw` diagram, versioned by
+   * this plan. Default to including one whenever the plan's change has a
+   * shape: skip only when there's nothing to draw, or it would just restate
+   * `surface` as a box-per-file graph. See SKILL.md.
+   */
+  diagrams: z.array(PlanDiagram).default([]),
   /** bumped by the agent on each revision; shown on the canvas */
   revision: z.number().int().nonnegative().default(1),
 });
 export type PlanSpec = z.infer<typeof PlanSpec>;
 
-export class SpecError extends Error {
-  constructor(
-    message: string,
-    readonly issues: string[],
-  ) {
-    super(message);
-    this.name = "SpecError";
-  }
-}
+export { SpecError } from "./errors.js";
 
 /** Cross-field checks zod can't express cheaply: dangling id references. */
 function checkReferences(spec: PlanSpec): string[] {
@@ -146,6 +148,20 @@ function checkReferences(spec: PlanSpec): string[] {
       issues.push(`fork "${fork.id}" atStep references unknown step "${fork.atStep}"`);
     }
   }
+
+  // embedded diagrams get the same reference checks as standalone ones, with
+  // the diagram id prefixed so "unknown node" says *which* diagram it's in
+  const seenDiagrams = new Set<string>();
+  for (const diagram of spec.diagrams) {
+    if (seenDiagrams.has(diagram.id)) {
+      issues.push(`duplicate diagram id "${diagram.id}"`);
+    }
+    seenDiagrams.add(diagram.id);
+    for (const issue of checkDiagramReferences(diagram)) {
+      issues.push(`diagram "${diagram.id}": ${issue}`);
+    }
+  }
+
   return issues;
 }
 
