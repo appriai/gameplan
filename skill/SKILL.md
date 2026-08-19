@@ -45,7 +45,8 @@ one at its own URL, independent of any plan. See "Freestyle diagrams" below.
 
 ## Writing the spec
 
-Six sections. Fill the ones that carry signal; leave the rest empty rather than padding them.
+Seven sections. Fill the ones that carry signal; leave the rest empty rather than padding them
+— except `diagrams`, which is worth reaching for by default (see below).
 
 ```yaml
 id: rate-limiting          # stable slug — reusing it updates the same canvas
@@ -111,6 +112,62 @@ alternatives evaporate and the reader only sees your conclusion. Put them in `fo
 
 Two to four forks is a normal plan. If you have none, say so explicitly rather than inventing
 filler.
+
+### Diagrams inside a plan
+
+A plan can carry supporting pictures in a `diagrams:` array — same drawing
+vocabulary as `gameplan draw`, rendered as their own frames between the goal and
+the steps, versioned by the plan:
+
+```yaml
+diagrams:
+  - id: request-path
+    title: Where the limiter sits in the request path
+    layout: graph            # or: sequence
+    direction: LR
+    note: Dashed box is what this plan adds.
+    clusters:
+      - id: added
+        label: added by this plan
+    nodes:
+      - id: limiter
+        label: Rate-limit middleware
+        icon: file
+        color: green
+        cluster: added
+    edges:
+      - from: gateway
+        to: limiter
+```
+
+**Default to drawing one.** You have just read the code; the reviewer probably
+hasn't, and almost certainly doesn't hold the system in their head as precisely
+as you do right now. A picture of where your change lands is the cheapest way to
+close that gap, and it's the thing a reviewer needs *before* they can judge the
+steps. When you're unsure whether a plan warrants a diagram, include it.
+
+Reach for one whenever the plan:
+
+- inserts something into an existing request or data path — *where* it sits is
+  usually the most debatable thing in the plan;
+- changes how components talk: a new hop, a moved boundary, a reversed
+  dependency, a new store;
+- touches a part of the system the reviewer may not know well;
+- has a fork about placement or topology. Draw the shape the chosen option
+  produces, so the fork's rationale has something concrete to point at.
+
+Two diagrams — today's shape and the shape after — are often clearer than one
+annotated hybrid, and they cost the reviewer very little.
+
+Leave it out only when it would genuinely add nothing:
+
+- **The change has no shape.** Tweaking a constant, tightening validation,
+  renaming a symbol, editing copy — there's no path or boundary to draw.
+- **It would restate `surface`.** A box-per-file graph next to the code-surface
+  region is the same information twice.
+- **It would be the directory tree.** Folder structure isn't architecture.
+
+Those are the exceptions. If none of them clearly applies, draw the diagram.
 
 ## Freestyle diagrams
 

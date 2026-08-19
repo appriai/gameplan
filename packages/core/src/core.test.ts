@@ -535,3 +535,151 @@ describe("feedback", () => {
     expect(comment.anchor.nodeId).toBe("middleware");
   });
 });
+
+// ------------------------------------------------- diagrams inside a plan
+
+describe("embedded plan diagrams", () => {
+  const TWO_DIAGRAMS = {
+    id: "p",
+    title: "t",
+    goal: "g",
+    diagrams: [
+      {
+        id: "before",
+        title: "Today",
+        layout: "graph",
+        nodes: [
+          { id: "api", label: "API" },
+          { id: "db", label: "DB" },
+        ],
+        edges: [{ from: "api", to: "db" }],
+      },
+      {
+        // deliberately reuses the node ids of the diagram above
+        id: "after",
+        title: "After",
+        layout: "graph",
+        nodes: [
+          { id: "api", label: "API" },
+          { id: "db", label: "DB" },
+        ],
+        edges: [{ from: "api", to: "db" }],
+      },
+    ],
+  };
+
+  it("renders a diagram carried by the example plan", () => {
+    const { scene } = renderPlan(loadExample(), { now: FIXED_NOW });
+    const frame = scene.elements.find(
+      (e) => e.type === "frame" && (e as { name?: string }).name?.includes("request path"),
+    );
+    expect(frame).toBeDefined();
+    expect(
+      scene.elements.some((e) => e.customData?.gameplan?.role === "diagram-node"),
+    ).toBe(true);
+  });
+
+  it("keeps element ids distinct when two diagrams share node ids", () => {
+    const { scene } = renderPlan(parseSpec(TWO_DIAGRAMS), { now: FIXED_NOW });
+    const ids = scene.elements.map((e) => e.id);
+    expect(new Set(ids).size).toBe(ids.length);
+
+    // and the two `api` nodes stay tellable apart in feedback
+    const apis = scene.elements
+      .filter((e) => e.customData?.gameplan?.role === "diagram-node" && e.type === "rectangle")
+      .map((e) => e.customData!.gameplan!.nodeId);
+    expect(apis).toContain("before:api");
+    expect(apis).toContain("after:api");
+  });
+
+  it("orders the diagram frame between goal and steps", () => {
+    const { scene } = renderPlan(loadExample(), { now: FIXED_NOW });
+    const frames = scene.elements.filter((e) => e.type === "frame");
+    const names = frames.map((f) => (f as { name: string }).name);
+    const goal = names.findIndex((n) => n.startsWith("Goal"));
+    const diagram = names.findIndex((n) => n.includes("request path"));
+    const steps = names.indexOf("Steps");
+    expect(goal).toBeLessThan(diagram);
+    expect(diagram).toBeLessThan(steps);
+  });
+
+  it("leaves no gap in the stack when a plan has no diagrams", () => {
+    const without = { ...loadExample(), diagrams: [] };
+    const { scene } = renderPlan(without, { now: FIXED_NOW });
+    const frames = scene.elements.filter((e) => e.type === "frame");
+    const goal = frames.find((f) => (f as { name: string }).name.startsWith("Goal"))!;
+    const steps = frames.find((f) => (f as { name: string }).name === "Steps")!;
+    // exactly one frame gap between them, not two
+    expect(steps.y - (goal.y + goal.height)).toBe(100);
+  });
+
+  it("reports which diagram a dangling reference is in", () => {
+    expect(() =>
+      parseSpec({
+        id: "p",
+        title: "t",
+        goal: "g",
+        diagrams: [
+          {
+            id: "arch",
+            title: "Arch",
+            layout: "graph",
+            nodes: [{ id: "a", label: "A" }],
+            edges: [{ from: "a", to: "ghost" }],
+          },
+        ],
+      }),
+    ).toThrow(/diagram "arch": edges\[0\] references unknown node "ghost"/);
+  });
+
+  it("rejects two diagrams with the same id", () => {
+    expect(() =>
+      parseSpec({
+        id: "p",
+        title: "t",
+        goal: "g",
+        diagrams: [
+          { id: "d", title: "One", layout: "graph", nodes: [{ id: "a", label: "A" }] },
+          { id: "d", title: "Two", layout: "graph", nodes: [{ id: "b", label: "B" }] },
+        ],
+      }),
+    ).toThrow(/duplicate diagram id "d"/);
+  });
+
+  it("anchors a sticky dropped on an embedded diagram node", () => {
+    const { scene, snapshot } = renderPlan(loadExample(), { now: FIXED_NOW });
+    const cloned = structuredClone(scene);
+    const node = cloned.elements.find(
+      (e) =>
+        e.customData?.gameplan?.role === "diagram-node" &&
+        e.customData.gameplan.nodeId === "request-path:limiter" &&
+        e.type === "rectangle",
+    )!;
+    cloned.elements.push(
+      annotate(cloned, {
+        id: "dgm-note",
+        type: "text",
+        x: node.x + node.width / 2 - 5,
+        y: node.y + node.height / 2 - 5,
+        width: 10,
+        height: 10,
+        text: "does this run before or after auth?",
+        originalText: "does this run before or after auth?",
+        containerId: null,
+        fontSize: 16,
+        fontFamily: 1,
+        textAlign: "left",
+        verticalAlign: "top",
+        autoResize: false,
+        lineHeight: 1.25,
+        backgroundColor: PALETTE.bgYellow,
+      } as Partial<ExcalidrawElement> & { id: string }),
+    );
+
+    const report = parseFeedback(cloned, snapshot);
+    const comment = report.comments.find((c) => c.text.includes("before or after"))!;
+    expect(comment.intent).toBe("question");
+    expect(comment.anchor.role).toBe("diagram-node");
+    expect(comment.anchor.nodeId).toBe("request-path:limiter");
+  });
+});

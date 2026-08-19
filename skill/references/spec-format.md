@@ -21,6 +21,7 @@ line-level messages.
 | `steps` | Step[] | `[]` | Execution order. |
 | `risks` | Risk[] | `[]` | What could go wrong. |
 | `outOfScope` | string[] | `[]` | What you are deliberately not doing. |
+| `diagrams` | PlanDiagram[] | `[]` | Supporting pictures — architecture, a request sequence. See below. |
 
 ## Step
 
@@ -66,6 +67,30 @@ their rationale still legible. That contrast is the whole reason the section exi
 | `severity` | enum | `med` | `low` · `med` · `high`. Drives colour. |
 | `mitigation` | string | — | What you'd do about it. |
 
+## PlanDiagram
+
+An entry in `diagrams`. Identical to a standalone diagram from
+`references/diagram-format.md` — every `graph` and `sequence` field applies —
+except it has **no `revision`**: the plan around it owns that.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | string | Required, unique among the plan's diagrams. Also namespaces its nodes in feedback, so a comment reads `diagram-node "request-path:limiter"`. |
+| `title` | string | Required. Becomes the frame name. |
+| `note` | string | Optional one-line subtitle. |
+| `layout` | `graph` \| `sequence` | Required. Selects the layout from the catalogue. |
+| …rest | — | Per layout: `nodes`/`edges`/`clusters`/`direction`, or `actors`/`messages`. |
+
+Two diagrams in one plan may reuse node ids freely — `api` in one and `api` in
+another stay distinct, both on the canvas and in feedback.
+
+Rendered between the Goal and Steps frames: a plan's diagram is orientation, so
+it comes before what we intend to do to the system. A plan with no diagrams
+renders no frame and no gap.
+
+Default to including one — see SKILL.md for the handful of cases where a plan
+genuinely doesn't need a diagram.
+
 ## Validation rules
 
 Beyond types:
@@ -75,6 +100,9 @@ Beyond types:
 - Every `dependsOn` must name an existing id in the same collection.
 - `fork.atStep` must name an existing step.
 - Every fork needs ≥2 options and exactly one `chosen`.
+- Diagram ids are unique within the plan, and each diagram's own edges/messages
+  must reference nodes/actors it declares. Errors name the diagram:
+  `diagram "request-path": edges[0] references unknown node "ghost"`.
 
 ## Canvas regions
 
@@ -82,14 +110,15 @@ Rendered top to bottom, in reading order, each in a named Excalidraw frame. The 
 illustration-led — a journey map, not a stack of index cards:
 
 1. **Goal** — flag icon, title, goal, success criteria
-2. **Steps** — numbered waypoints on one connected path, left to right, each with a short
+2. **Diagrams** — one frame per entry in `diagrams`, if any. Orientation before intent.
+3. **Steps** — numbered waypoints on one connected path, left to right, each with a short
    title plus a file glyph and a checkmark caption. Grouped, so dragging a waypoint moves the
    whole step — that drag is the reorder signal.
-3. **Decision forks** — a diamond fanning into one lane per option. The chosen lane is solid
+4. **Decision forks** — a diamond fanning into one lane per option. The chosen lane is solid
    and bold, landing on a filled dot; rejected lanes are dashed and faded, landing on hollow
    ones, with their rationale still readable.
-4. **Code surface** — dagre-laid dependency graph of icon-and-filename nodes, coloured by kind
-5. **Risks & out of scope** — each risk led by a severity-coloured warning triangle
+5. **Code surface** — dagre-laid dependency graph of icon-and-filename nodes, coloured by kind
+6. **Risks & out of scope** — each risk led by a severity-coloured warning triangle
 
 **Legend** sits to the right of the stack. It documents both halves of the contract: how to
 *read* the visual language (waypoint, diamond, solid vs. dashed lane, the icons) and how to

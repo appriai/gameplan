@@ -1,11 +1,11 @@
 import dagre from "@dagrejs/dagre";
 import { checkGlyph, crossGlyph, fileGlyph, flagGlyph, warningTriangle, type IconArgs } from "../icons.js";
-import { clampLines, truncateLine } from "../text.js";
+import { clampLines, measureText, truncateLine } from "../text.js";
 import { DIAGRAM_COLOR_STYLE, METRICS, PALETTE, TYPE_SCALE } from "../theme.js";
 import type { ExcalidrawElement } from "../excalidraw.js";
 import type { GraphDiagram, GraphNode } from "../diagram.js";
 import { centeredText } from "../layout/common.js";
-import type { DiagramLayoutCtx, DiagramLayoutResult } from "./registry.js";
+import { scopedKey, scopedNodeId, type DiagramLayoutCtx, type DiagramLayoutResult } from "./registry.js";
 import type { SceneBuilder } from "../elements.js";
 
 const ICONS: Record<string, ((builder: SceneBuilder, args: IconArgs) => void) | null> = {
@@ -20,6 +20,7 @@ const ICONS: Record<string, ((builder: SceneBuilder, args: IconArgs) => void) | 
 const NOTE_LINES = 2;
 const CLUSTER_PAD = 20;
 const CLUSTER_LABEL_HEIGHT = 24;
+const EDGE_LABEL_MAX_WIDTH = 160;
 
 interface NodePlan {
   node: GraphNode;
@@ -58,7 +59,9 @@ export function layoutGraph(
 ): DiagramLayoutResult {
   const pad = METRICS.framePadding;
   const NODE_WIDTH = METRICS.diagramNodeWidth;
-  const plans = new Map(spec.nodes.map((n) => [n.id, planNode(n)]));
+  const k = (key: string) => scopedKey(ctx, key);
+  const n = (id: string) => scopedNodeId(ctx, id);
+  const plans = new Map(spec.nodes.map((node) => [node.id, planNode(node)]));
 
   const g = new dagre.graphlib.Graph({ multigraph: false, compound: true });
   g.setGraph({
@@ -76,7 +79,24 @@ export function layoutGraph(
     g.setNode(node.id, { width: NODE_WIDTH, height: plan.height });
     if (node.cluster) g.setParent(node.id, node.cluster);
   }
-  for (const edge of spec.edges) g.setEdge(edge.from, edge.to);
+  // give dagre the label's footprint so it routes around it and hands back a
+  // position that clears the nodes. Placing labels at the geometric midpoint
+  // instead breaks on any edge that spans the graph — a back-edge's midpoint
+  // lands squarely on whatever node sits in the middle.
+  const edgeLabels = new Map<string, ReturnType<typeof measureText>>();
+  for (const edge of spec.edges) {
+    if (!edge.label) {
+      g.setEdge(edge.from, edge.to);
+      continue;
+    }
+    const measured = measureText(edge.label, TYPE_SCALE.small, EDGE_LABEL_MAX_WIDTH);
+    edgeLabels.set(`${edge.from} ${edge.to}`, measured);
+    g.setEdge(edge.from, edge.to, {
+      width: measured.width,
+      height: measured.height,
+      labelpos: "c",
+    });
+  }
 
   dagre.layout(g);
 
@@ -96,9 +116,9 @@ export function layoutGraph(
     const left = offsetX + laid.x - laid.width / 2 - CLUSTER_PAD;
     const top = offsetY + laid.y - laid.height / 2 - CLUSTER_PAD - CLUSTER_LABEL_HEIGHT;
     builder.rect({
-      key: `cluster::${cluster.id}`,
+      key: k(`cluster::${cluster.id}`),
       role: "cluster",
-      nodeId: cluster.id,
+      nodeId: n(cluster.id),
       x: left,
       y: top,
       width: laid.width + CLUSTER_PAD * 2,
@@ -111,9 +131,9 @@ export function layoutGraph(
       frameId: ctx.frameId,
     });
     builder.text({
-      key: `cluster::${cluster.id}::label`,
+      key: k(`cluster::${cluster.id}::label`),
       role: "cluster",
-      nodeId: cluster.id,
+      nodeId: n(cluster.id),
       x: left + 10,
       y: top + 6,
       text: cluster.label,
@@ -134,9 +154,9 @@ export function layoutGraph(
     const style = DIAGRAM_COLOR_STYLE[node.color]!;
 
     const box = builder.rect({
-      key: `node::${node.id}`,
+      key: k(`node::${node.id}`),
       role: "diagram-node",
-      nodeId: node.id,
+      nodeId: n(node.id),
       x,
       y,
       width: NODE_WIDTH,
@@ -152,9 +172,9 @@ export function layoutGraph(
     if (plan.hasIcon) {
       const draw = ICONS[node.icon];
       draw?.(builder, {
-        key: `node::${node.id}::icon`,
+        key: k(`node::${node.id}::icon`),
         role: "diagram-node",
-        nodeId: node.id,
+        nodeId: n(node.id),
         x: centerX - METRICS.diagramIconSize * 0.39,
         y: cursor,
         size: METRICS.diagramIconSize,
@@ -165,9 +185,9 @@ export function layoutGraph(
     }
 
     centeredText(builder, {
-      key: `node::${node.id}::label`,
+      key: k(`node::${node.id}::label`),
       role: "diagram-node",
-      nodeId: node.id,
+      nodeId: n(node.id),
       centerX,
       y: cursor,
       text: plan.label,
@@ -179,9 +199,9 @@ export function layoutGraph(
 
     if (plan.note) {
       centeredText(builder, {
-        key: `node::${node.id}::note`,
+        key: k(`node::${node.id}::note`),
         role: "diagram-node",
-        nodeId: node.id,
+        nodeId: n(node.id),
         centerX,
         y: cursor,
         text: plan.note.text,
@@ -198,7 +218,7 @@ export function layoutGraph(
     const to = boxes.get(edge.to);
     if (!from || !to) continue;
     builder.arrow({
-      key: `edge::${edge.from}::${edge.to}`,
+      key: k(`edge::${edge.from}::${edge.to}`),
       from,
       to,
       strokeColor: PALETTE.muted,
@@ -206,15 +226,25 @@ export function layoutGraph(
       frameId: ctx.frameId,
     });
     if (edge.label) {
-      const midX = (from.x + from.width / 2 + to.x + to.width / 2) / 2;
-      const midY = (from.y + from.height / 2 + to.y + to.height / 2) / 2;
+      const measured = edgeLabels.get(`${edge.from} ${edge.to}`);
+      const laid = g.edge(edge.from, edge.to) as { x?: number; y?: number } | undefined;
+      // dagre reserved a slot for this label; fall back to the midpoint only
+      // if it didn't (an edge it couldn't route, or a layout that ignores it)
+      const centerX =
+        laid?.x !== undefined
+          ? offsetX + laid.x
+          : (from.x + from.width / 2 + to.x + to.width / 2) / 2;
+      const centerY =
+        laid?.y !== undefined
+          ? offsetY + laid.y
+          : (from.y + from.height / 2 + to.y + to.height / 2) / 2;
       centeredText(builder, {
-        key: `edge::${edge.from}::${edge.to}::label`,
+        key: k(`edge::${edge.from}::${edge.to}::label`),
         role: "decor",
-        centerX: midX,
-        y: midY - 20,
+        centerX,
+        y: centerY - (measured?.height ?? TYPE_SCALE.small) / 2,
         text: edge.label,
-        maxWidth: 160,
+        maxWidth: EDGE_LABEL_MAX_WIDTH,
         fontSize: TYPE_SCALE.small,
         color: PALETTE.muted,
         frameId: ctx.frameId,

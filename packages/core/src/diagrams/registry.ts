@@ -17,6 +17,27 @@ export interface DiagramLayoutCtx {
   width: number;
   /** every element this layout draws belongs to this frame */
   frameId: string;
+  /**
+   * Set when this diagram is one of several embedded in a plan, to the
+   * diagram's own id. Element keys are derived from `planId + key`, so two
+   * diagrams in one plan that both name a node `api` would otherwise collide
+   * on the same element id. Also namespaces the `nodeId` in customData, so
+   * feedback says which diagram a comment landed on.
+   *
+   * Left undefined for a standalone diagram — keeping its element ids exactly
+   * as they were before embedding existed, so annotations stay anchored.
+   */
+  scope?: string;
+}
+
+/** Element key, namespaced when the diagram is embedded in a plan. */
+export function scopedKey(ctx: DiagramLayoutCtx, key: string): string {
+  return ctx.scope ? `dgm::${ctx.scope}::${key}` : key;
+}
+
+/** customData nodeId, namespaced when the diagram is embedded in a plan. */
+export function scopedNodeId(ctx: DiagramLayoutCtx, nodeId: string): string {
+  return ctx.scope ? `${ctx.scope}:${nodeId}` : nodeId;
 }
 
 export interface DiagramLayoutResult {

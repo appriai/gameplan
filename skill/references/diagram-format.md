@@ -5,6 +5,12 @@ calls. Same rule as PlanSpec: you write structure, the renderer owns geometry. R
 `gameplan draw <diagram.yaml>`, which gives it its own URL (`/d/<id>`), independent of any
 plan.
 
+Everything on this page — both layout kinds, every field — applies equally to a diagram
+embedded in a plan's `diagrams:` array. The only difference is the envelope: a `PlanDiagram`
+has no `revision` of its own, since the plan around it owns that. See
+`references/spec-format.md`'s `PlanDiagram` section for the embedded shape, and SKILL.md's
+"Diagrams inside a plan" for when to reach for one.
+
 ## Choosing a layout kind
 
 The `layout` field selects which algorithm in the catalogue lays it out. Two ship today:
