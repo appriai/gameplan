@@ -63,7 +63,7 @@ export function layoutGraph(
   const n = (id: string) => scopedNodeId(ctx, id);
   const plans = new Map(spec.nodes.map((node) => [node.id, planNode(node)]));
 
-  const g = new dagre.graphlib.Graph({ multigraph: false, compound: true });
+  const g = new dagre.graphlib.Graph({ multigraph: true, compound: true });
   g.setGraph({
     rankdir: spec.direction,
     nodesep: 30,
@@ -83,20 +83,30 @@ export function layoutGraph(
   // position that clears the nodes. Placing labels at the geometric midpoint
   // instead breaks on any edge that spans the graph — a back-edge's midpoint
   // lands squarely on whatever node sits in the middle.
-  const edgeLabels = new Map<string, ReturnType<typeof measureText>>();
-  for (const edge of spec.edges) {
+  //
+  // Edges are named by their index rather than `${from} ${to}` so that two
+  // edges between the same node pair (a legal, if unusual, spec) get distinct
+  // entries instead of colliding — both in this label map and in dagre's own
+  // edge store, which requires a multigraph to keep same-pair edges separate.
+  const edgeLabels = new Map<number, ReturnType<typeof measureText>>();
+  spec.edges.forEach((edge, i) => {
     if (!edge.label) {
-      g.setEdge(edge.from, edge.to);
-      continue;
+      g.setEdge(edge.from, edge.to, {}, String(i));
+      return;
     }
     const measured = measureText(edge.label, TYPE_SCALE.small, EDGE_LABEL_MAX_WIDTH);
-    edgeLabels.set(`${edge.from} ${edge.to}`, measured);
-    g.setEdge(edge.from, edge.to, {
-      width: measured.width,
-      height: measured.height,
-      labelpos: "c",
-    });
-  }
+    edgeLabels.set(i, measured);
+    g.setEdge(
+      edge.from,
+      edge.to,
+      {
+        width: measured.width,
+        height: measured.height,
+        labelpos: "c",
+      },
+      String(i),
+    );
+  });
 
   dagre.layout(g);
 
@@ -213,12 +223,12 @@ export function layoutGraph(
     }
   }
 
-  for (const edge of spec.edges) {
+  spec.edges.forEach((edge, i) => {
     const from = boxes.get(edge.from);
     const to = boxes.get(edge.to);
-    if (!from || !to) continue;
+    if (!from || !to) return;
     builder.arrow({
-      key: k(`edge::${edge.from}::${edge.to}`),
+      key: k(`edge::${i}::${edge.from}::${edge.to}`),
       from,
       to,
       strokeColor: PALETTE.muted,
@@ -226,8 +236,8 @@ export function layoutGraph(
       frameId: ctx.frameId,
     });
     if (edge.label) {
-      const measured = edgeLabels.get(`${edge.from} ${edge.to}`);
-      const laid = g.edge(edge.from, edge.to) as { x?: number; y?: number } | undefined;
+      const measured = edgeLabels.get(i);
+      const laid = g.edge(edge.from, edge.to, String(i)) as { x?: number; y?: number } | undefined;
       // dagre reserved a slot for this label; fall back to the midpoint only
       // if it didn't (an edge it couldn't route, or a layout that ignores it)
       const centerX =
@@ -239,7 +249,7 @@ export function layoutGraph(
           ? offsetY + laid.y
           : (from.y + from.height / 2 + to.y + to.height / 2) / 2;
       centeredText(builder, {
-        key: k(`edge::${edge.from}::${edge.to}::label`),
+        key: k(`edge::${i}::${edge.from}::${edge.to}::label`),
         role: "decor",
         centerX,
         y: centerY - (measured?.height ?? TYPE_SCALE.small) / 2,
@@ -250,7 +260,7 @@ export function layoutGraph(
         frameId: ctx.frameId,
       });
     }
-  }
+  });
 
   return { width, height };
 }
