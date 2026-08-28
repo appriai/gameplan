@@ -189,6 +189,34 @@ describe("graph layout", () => {
       expect(el.customData?.gameplan?.planId).toBe("system-architecture");
     }
   });
+
+  it("gives two edges between the same node pair independent labels", () => {
+    // a non-multigraph dagre instance, or a label map keyed only by
+    // "from to", collapses distinct parallel edges onto a single slot
+    const spec = parseDiagramSpec({
+      id: "d",
+      title: "t",
+      layout: "graph",
+      nodes: [
+        { id: "a", label: "A" },
+        { id: "b", label: "B" },
+      ],
+      edges: [
+        { from: "a", to: "b", label: "request" },
+        { from: "a", to: "b", label: "response" },
+      ],
+    });
+    const { scene } = renderDiagram(spec, { now: FIXED_NOW });
+    const labels = scene.elements.filter(
+      (e) => e.type === "text" && e.customData?.gameplan?.role === "decor",
+    );
+    expect(labels.map((l) => (l as { originalText?: string }).originalText).sort()).toEqual([
+      "request",
+      "response",
+    ]);
+    const [first, second] = labels;
+    expect(first.x !== second.x || first.y !== second.y).toBe(true);
+  });
 });
 
 describe("sequence layout", () => {
