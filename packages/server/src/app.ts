@@ -1,14 +1,14 @@
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 import Fastify, { type FastifyInstance } from "fastify";
 import fastifyStatic from "@fastify/static";
-import { SpecError } from "@gameplan/core";
+import { SpecError } from "gameplan-core";
 import { attachCollab, type CollabHub, type DocKind } from "./collab.js";
 import { diagramUrls, planUrls } from "./net.js";
 import { DiagramStore, PlanStore, type DocStore } from "./store.js";
 
-const here = dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
 
 export interface ServerOptions {
   port: number;
@@ -28,11 +28,18 @@ export interface RunningServer {
 }
 
 function defaultWebRoot(): string | undefined {
-  const candidates = [
-    join(here, "../../web/dist"),
-    join(here, "../../../web/dist"),
-  ];
-  return candidates.find((p) => existsSync(join(p, "index.html")));
+  // resolve through the package graph, same as the cli locating this
+  // package's own entry point, so it works from a global install too —
+  // a hardcoded relative path breaks the moment gameplan-web isn't hoisted
+  // to the exact directory depth it assumes
+  let webPkg: string;
+  try {
+    webPkg = require.resolve("gameplan-web/package.json");
+  } catch {
+    return undefined;
+  }
+  const root = join(dirname(webPkg), "dist");
+  return existsSync(join(root, "index.html")) ? root : undefined;
 }
 
 /** Registers the same seven routes for either `/api/plans` or `/api/diagrams`. */

@@ -1,7 +1,7 @@
 {
-  "name": "@gameplan/web",
+  "name": "gameplan-web",
   "version": "0.1.0",
-  "description": "gameplan's Excalidraw plan/diagram canvas — built as static assets served by @gameplan/server",
+  "description": "gameplan's Excalidraw plan/diagram canvas — built as static assets served by gameplan-server",
   "type": "module",
   "license": "MIT",
   "author": "Appri Technologies (Pvt) Ltd",
@@ -13,9 +13,6 @@
   "homepage": "https://github.com/appriai/gameplan#readme",
   "bugs": {
     "url": "https://github.com/appriai/gameplan/issues"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "files": ["dist"],
   "scripts": {

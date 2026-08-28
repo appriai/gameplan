@@ -1,4 +1,4 @@
-import type { FeedbackReport } from "@gameplan/core";
+import type { FeedbackReport } from "gameplan-core";
 
 /**
  * Render feedback as text an agent can act on directly.

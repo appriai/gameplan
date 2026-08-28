@@ -2,7 +2,7 @@
 import { readFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
-import { parseDiagramYaml, parseSpecYaml, SpecError, type FeedbackReport } from "@gameplan/core";
+import { parseDiagramYaml, parseSpecYaml, SpecError, type FeedbackReport } from "gameplan-core";
 import { api, DATA_DIR, DEFAULT_PORT, ensureServer, health, stopServer } from "./daemon.js";
 import { formatReport } from "./report.js";
 import { cloudflaredAvailable, ensureTunnel, stopTunnel, tunnelStatus } from "./tunnel.js";

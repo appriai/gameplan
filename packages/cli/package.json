@@ -1,5 +1,5 @@
 {
-  "name": "@gameplan/cli",
+  "name": "gameplan-cli",
   "version": "0.1.0",
   "description": "Agent plans as a live Excalidraw canvas your team can annotate — the gameplan command line tool",
   "type": "module",
@@ -14,9 +14,6 @@
   "bugs": {
     "url": "https://github.com/appriai/gameplan/issues"
   },
-  "publishConfig": {
-    "access": "public"
-  },
   "bin": {
     "gameplan": "./dist/index.js"
   },
@@ -28,8 +25,8 @@
     "postbuild": "chmod +x dist/index.js"
   },
   "dependencies": {
-    "@gameplan/core": "0.1.0",
-    "@gameplan/server": "0.1.0"
+    "gameplan-core": "0.1.0",
+    "gameplan-server": "0.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
