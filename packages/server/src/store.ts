@@ -13,7 +13,7 @@ import {
   type FeedbackReport,
   type PlanSpec,
   type Snapshot,
-} from "@gameplan/core";
+} from "gameplan-core";
 
 export interface Submission {
   at: number;

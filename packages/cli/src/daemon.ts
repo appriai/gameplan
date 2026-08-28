@@ -50,7 +50,7 @@ export async function health(
 
 function serverEntry(): string {
   // resolve through the package graph so this works from a global install too
-  const pkg = require.resolve("@gameplan/server/package.json");
+  const pkg = require.resolve("gameplan-server/package.json");
   return join(dirname(pkg), "dist", "main.js");
 }
 
