@@ -3,6 +3,16 @@
   "private": true,
   "version": "0.1.0",
   "description": "Interactive agent plans on a live Excalidraw canvas",
+  "license": "MIT",
+  "author": "Appri Technologies (Pvt) Ltd",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/appriai/gameplan.git"
+  },
+  "homepage": "https://github.com/appriai/gameplan#readme",
+  "bugs": {
+    "url": "https://github.com/appriai/gameplan/issues"
+  },
   "type": "module",
   "workspaces": [
     "packages/core",

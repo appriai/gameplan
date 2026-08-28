@@ -1,7 +1,22 @@
 {
   "name": "@gameplan/cli",
   "version": "0.1.0",
+  "description": "Agent plans as a live Excalidraw canvas your team can annotate — the gameplan command line tool",
   "type": "module",
+  "license": "MIT",
+  "author": "Appri Technologies (Pvt) Ltd",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/appriai/gameplan.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/appriai/gameplan#readme",
+  "bugs": {
+    "url": "https://github.com/appriai/gameplan/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "bin": {
     "gameplan": "./dist/index.js"
   },
