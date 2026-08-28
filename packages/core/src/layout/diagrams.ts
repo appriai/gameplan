@@ -1,6 +1,6 @@
-import { measureText } from "../text.js";
-import { METRICS, PALETTE, TYPE_SCALE } from "../theme.js";
+import { METRICS, TYPE_SCALE } from "../theme.js";
 import { getDiagramLayout, listDiagramLayouts } from "../diagrams/registry.js";
+import { layoutDiagramHeader } from "../diagrams/header.js";
 import type { PlanDiagram } from "../diagram.js";
 import type { RegionCtx, RegionResult } from "./common.js";
 
@@ -20,7 +20,6 @@ export function layoutDiagrams(ctx: RegionCtx): RegionResult {
   const { builder, spec } = ctx;
   if (spec.diagrams.length === 0) return { width: ctx.width, height: 0 };
 
-  const pad = METRICS.framePadding;
   let y = ctx.y;
   let widest = ctx.width;
 
@@ -32,48 +31,25 @@ export function layoutDiagrams(ctx: RegionCtx): RegionResult {
       );
     }
 
-    const inner = ctx.width - 2 * pad;
-    const title = measureText(diagram.title, TYPE_SCALE.heading, inner);
-    const note = diagram.note ? measureText(diagram.note, TYPE_SCALE.body, inner) : null;
-    const headerHeight = pad + title.height + (note ? 6 + note.height : 0) + 16;
-
-    // the frame must precede its children in z-order, but its height depends
-    // on the body we haven't drawn yet — emit it, then resize once we know
-    const frame = builder.frame({
-      key: `frame::diagram::${diagram.id}`,
-      name: diagram.title,
+    const { frame, headerHeight } = layoutDiagramHeader({
+      builder,
       x: ctx.x,
       y,
       width: ctx.width,
-      height: headerHeight,
-    });
-
-    builder.text({
-      key: `diagram::${diagram.id}::title`,
-      role: "diagram-title",
-      nodeId: diagram.id,
+      frameKey: `frame::diagram::${diagram.id}`,
+      frameName: diagram.title,
+      titleKey: `diagram::${diagram.id}::title`,
+      noteKey: `diagram::${diagram.id}::note`,
+      titleNodeId: diagram.id,
+      noteNodeId: diagram.id,
       ordinal: index,
-      x: ctx.x + pad,
-      y: y + pad,
-      text: diagram.title,
-      maxWidth: inner,
-      fontSize: TYPE_SCALE.heading,
-      frameId: frame.id,
+      title: diagram.title,
+      note: diagram.note,
+      titleFontSize: TYPE_SCALE.heading,
+      noteFontSize: TYPE_SCALE.body,
+      noteGap: 6,
+      trailingGap: 16,
     });
-    if (note) {
-      builder.text({
-        key: `diagram::${diagram.id}::note`,
-        role: "diagram-title",
-        nodeId: diagram.id,
-        x: ctx.x + pad,
-        y: y + pad + title.height + 6,
-        text: diagram.note!,
-        maxWidth: inner,
-        fontSize: TYPE_SCALE.body,
-        color: PALETTE.muted,
-        frameId: frame.id,
-      });
-    }
 
     // safe cast: `layout` was looked up by this exact diagram's `layout`
     // field, see the longer note on the same pattern in diagrams/render.ts
