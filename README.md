@@ -33,7 +33,7 @@ does not expire on its own.
 ```bash
 npm install
 npm run build
-npm link -w @gameplan/cli    # puts `gameplan` on PATH
+npm link -w gameplan-cli    # puts `gameplan` on PATH
 ```
 
 Install the Claude Code skill:
@@ -46,10 +46,10 @@ ln -s "$PWD/skill" ~/.claude/skills/gameplan
 
 | Package | Role |
 |---|---|
-| `@gameplan/core` | Spec schema, layout engine, Excalidraw element builders, feedback parser |
-| `@gameplan/server` | Fastify + WebSocket, scene store, disk persistence, the review handoff |
-| `@gameplan/web` | Vite + React + Excalidraw client with live cursors and an annotation palette |
-| `@gameplan/cli` | The `gameplan` command; autostarts the server |
+| `gameplan-core` | Spec schema, layout engine, Excalidraw element builders, feedback parser |
+| `gameplan-server` | Fastify + WebSocket, scene store, disk persistence, the review handoff |
+| `gameplan-web` | Vite + React + Excalidraw client with live cursors and an annotation palette |
+| `gameplan-cli` | The `gameplan` command; autostarts the server |
 
 The agent writes a **PlanSpec** (or, for a freestyle diagram, a **DiagramSpec**) — semantic
 YAML, no coordinates. The layout engine owns geometry, because models describe intent well and

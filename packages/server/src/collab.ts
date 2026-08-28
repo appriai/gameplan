@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Server } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
-import type { ExcalidrawElement } from "@gameplan/core";
+import type { ExcalidrawElement } from "gameplan-core";
 import type { DocStore } from "./store.js";
 
 /** Cursor colours, cycled so two reviewers rarely collide. */

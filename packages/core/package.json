@@ -1,5 +1,5 @@
 {
-  "name": "@gameplan/core",
+  "name": "gameplan-core",
   "version": "0.1.0",
   "description": "Layout and rendering engine for gameplan's Excalidraw diagrams and plan canvases",
   "type": "module",
@@ -13,9 +13,6 @@
   "homepage": "https://github.com/appriai/gameplan#readme",
   "bugs": {
     "url": "https://github.com/appriai/gameplan/issues"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

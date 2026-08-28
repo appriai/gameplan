@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import WebSocket from "ws";
-import type { ExcalidrawElement, FeedbackReport } from "@gameplan/core";
+import type { ExcalidrawElement, FeedbackReport } from "gameplan-core";
 import { startServer, type RunningServer } from "./app.js";
 import { reconcile } from "./store.js";
 

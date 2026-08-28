@@ -21,9 +21,9 @@
     "packages/web"
   ],
   "scripts": {
-    "build": "npm run build -w @gameplan/core && npm run build -w @gameplan/server && npm run build -w @gameplan/cli && npm run build -w @gameplan/web",
-    "test": "npm run test -w @gameplan/core && npm run test -w @gameplan/server",
-    "dev": "npm run dev -w @gameplan/web"
+    "build": "npm run build -w gameplan-core && npm run build -w gameplan-server && npm run build -w gameplan-cli && npm run build -w gameplan-web",
+    "test": "npm run test -w gameplan-core && npm run test -w gameplan-server",
+    "dev": "npm run dev -w gameplan-web"
   },
   "engines": {
     "node": ">=20"
