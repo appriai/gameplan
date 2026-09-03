@@ -2,18 +2,26 @@ name: Release
 
 # Cutting a release is two steps: bump the version in the four workspace
 # package.json files (in a normal PR, reviewed like any other change), then
-# push a `vX.Y.Z` tag on the commit where that landed. This workflow does
-# the rest: build, test, verify every package actually agrees with the tag,
-# publish to npm in dependency order, then create the matching GitHub
-# release.
+# push a `vX.Y.Z` tag on the commit where that landed:
 #
 #   git tag v0.1.1 <sha>
 #   git push origin v0.1.1
 #
+# This workflow then builds, tests, verifies every package actually agrees
+# with the tag, and STAGES all four to npm — it does not publish them live.
+#
 # Publishing uses npm Trusted Publishing (OIDC) — no npm token stored
-# anywhere. This exact repo + workflow filename must be registered as a
-# Trusted Publisher separately on each of the four packages' npmjs.com
-# settings pages before this will authenticate.
+# anywhere — with this repo's Trusted Publisher configured for stage-only
+# access. That's an intentional human gate that staged publishing exists
+# to provide: an OIDC/CI token can never approve a staged package, only a
+# person with 2FA can (via `npm stage approve <id>` or npmjs.com). So once
+# this job finishes, go approve the four staged packages yourself — server
+# depends on core+web, and cli depends on core+server, so approve core and
+# web first, then server, then cli — and once they're live, create the
+# release yourself too (it needs no token, so it doesn't earn its own
+# workflow):
+#
+#   gh release create vX.Y.Z --generate-notes
 
 on:
   push:
@@ -22,10 +30,9 @@ on:
 
 permissions:
   id-token: write # required for npm's OIDC trusted-publishing exchange
-  contents: write # required for `gh release create`
 
 jobs:
-  release:
+  stage:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -35,7 +42,7 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
-      # trusted publishing needs npm >= 11.5.1; don't rely on whatever a
+      # staged publishing needs npm >= 11.15.0; don't rely on whatever a
       # given runner image happens to bundle with Node 22
       - run: npm install -g npm@latest
 
@@ -59,18 +66,36 @@ jobs:
           done
           exit "$status"
 
-      # core and web have no gameplan-* deps so either could go first, but
-      # both must land before server, and server before cli — npm has to
-      # resolve those exact-version dependency pins against the registry.
-      - name: Publish to npm
+      # order here is cosmetic — staging doesn't make anything live, so
+      # there's no dependency to resolve yet. Kept in the same order as the
+      # approval sequence below so the two stay easy to eyeball together.
+      - name: Stage packages on npm
         run: |
           set -euo pipefail
-          npm publish -w gameplan-core
-          npm publish -w gameplan-web
-          npm publish -w gameplan-server
-          npm publish -w gameplan-cli
+          npm stage publish -w gameplan-core
+          npm stage publish -w gameplan-web
+          npm stage publish -w gameplan-server
+          npm stage publish -w gameplan-cli
 
-      - name: Create GitHub release
-        run: gh release create "$GITHUB_REF_NAME" --generate-notes
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Next steps
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## Staged for $GITHUB_REF_NAME — not live yet
+
+          All four packages are staged, not published. Approve each with
+          2FA — in this order, since \`gameplan-server\` depends on
+          \`gameplan-core\`+\`gameplan-web\`, and \`gameplan-cli\` depends
+          on \`gameplan-core\`+\`gameplan-server\`:
+
+          1. \`gameplan-core\`
+          2. \`gameplan-web\`
+          3. \`gameplan-server\`
+          4. \`gameplan-cli\`
+
+          Approve via \`npm stage approve <stage-id>\` (see \`npm stage list\`)
+          or on npmjs.com. Once all four are live:
+
+          \`\`\`
+          gh release create $GITHUB_REF_NAME --generate-notes
+          \`\`\`
+          EOF
