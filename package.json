@@ -1,7 +1,7 @@
 {
   "name": "gameplan-monorepo",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Interactive agent plans on a live Excalidraw canvas",
   "license": "MIT",
   "author": "Appri Technologies (Pvt) Ltd",
