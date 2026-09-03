@@ -1,0 +1,76 @@
+name: Release
+
+# Cutting a release is two steps: bump the version in the four workspace
+# package.json files (in a normal PR, reviewed like any other change), then
+# push a `vX.Y.Z` tag on the commit where that landed. This workflow does
+# the rest: build, test, verify every package actually agrees with the tag,
+# publish to npm in dependency order, then create the matching GitHub
+# release.
+#
+#   git tag v0.1.1 <sha>
+#   git push origin v0.1.1
+#
+# Publishing uses npm Trusted Publishing (OIDC) — no npm token stored
+# anywhere. This exact repo + workflow filename must be registered as a
+# Trusted Publisher separately on each of the four packages' npmjs.com
+# settings pages before this will authenticate.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  id-token: write # required for npm's OIDC trusted-publishing exchange
+  contents: write # required for `gh release create`
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      # trusted publishing needs npm >= 11.5.1; don't rely on whatever a
+      # given runner image happens to bundle with Node 22
+      - run: npm install -g npm@latest
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - run: npm run test
+
+      - name: Verify every package version matches the tag
+        run: |
+          set -euo pipefail
+          tag_version="${GITHUB_REF_NAME#v}"
+          status=0
+          for pkg in core web server cli; do
+            pkg_version=$(node -p "require('./packages/$pkg/package.json').version")
+            if [ "$pkg_version" != "$tag_version" ]; then
+              echo "packages/$pkg is at $pkg_version, but tag $GITHUB_REF_NAME expects $tag_version" >&2
+              status=1
+            fi
+          done
+          exit "$status"
+
+      # core and web have no gameplan-* deps so either could go first, but
+      # both must land before server, and server before cli — npm has to
+      # resolve those exact-version dependency pins against the registry.
+      - name: Publish to npm
+        run: |
+          set -euo pipefail
+          npm publish -w gameplan-core
+          npm publish -w gameplan-web
+          npm publish -w gameplan-server
+          npm publish -w gameplan-cli
+
+      - name: Create GitHub release
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
