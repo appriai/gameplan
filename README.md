@@ -31,12 +31,24 @@ does not expire on its own.
 ## Install
 
 ```bash
+npm install -g gameplan-cli
+```
+
+Or from a clone of this repo:
+
+```bash
 npm install
 npm run build
 npm link -w gameplan-cli    # puts `gameplan` on PATH
 ```
 
 Install the Claude Code skill:
+
+```bash
+npx skills add appriai/gameplan
+```
+
+or, from a clone of this repo:
 
 ```bash
 ln -s "$PWD/skill" ~/.claude/skills/gameplan

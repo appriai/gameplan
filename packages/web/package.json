@@ -1,6 +1,6 @@
 {
   "name": "gameplan-web",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "gameplan's Excalidraw plan/diagram canvas — built as static assets served by gameplan-server",
   "type": "module",
   "license": "MIT",
