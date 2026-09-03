@@ -12,13 +12,14 @@ name: Release
 #
 # Publishing uses npm Trusted Publishing (OIDC) — no npm token stored
 # anywhere — with this repo's Trusted Publisher configured for stage-only
-# access. That's an intentional human gate staged publishing exists to
-# provide: an OIDC/CI token can never approve a staged package, only a
+# access. That's an intentional human gate that staged publishing exists
+# to provide: an OIDC/CI token can never approve a staged package, only a
 # person with 2FA can (via `npm stage approve <id>` or npmjs.com). So once
-# this job finishes, go approve the four staged packages yourself — in
-# dependency order, core and web first, then server, then cli — and once
-# they're live, create the release yourself too (it needs no token, so it
-# doesn't earn its own workflow):
+# this job finishes, go approve the four staged packages yourself — server
+# depends on core+web, and cli depends on core+server, so approve core and
+# web first, then server, then cli — and once they're live, create the
+# release yourself too (it needs no token, so it doesn't earn its own
+# workflow):
 #
 #   gh release create vX.Y.Z --generate-notes
 
@@ -65,6 +66,9 @@ jobs:
           done
           exit "$status"
 
+      # order here is cosmetic — staging doesn't make anything live, so
+      # there's no dependency to resolve yet. Kept in the same order as the
+      # approval sequence below so the two stay easy to eyeball together.
       - name: Stage packages on npm
         run: |
           set -euo pipefail
@@ -79,8 +83,9 @@ jobs:
           ## Staged for $GITHUB_REF_NAME — not live yet
 
           All four packages are staged, not published. Approve each with
-          2FA — in this order, since \`gameplan-server\`/\`gameplan-cli\`
-          depend on the others existing live first:
+          2FA — in this order, since \`gameplan-server\` depends on
+          \`gameplan-core\`+\`gameplan-web\`, and \`gameplan-cli\` depends
+          on \`gameplan-core\`+\`gameplan-server\`:
 
           1. \`gameplan-core\`
           2. \`gameplan-web\`
