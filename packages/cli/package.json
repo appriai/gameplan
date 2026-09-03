@@ -1,6 +1,6 @@
 {
   "name": "gameplan-cli",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Agent plans as a live Excalidraw canvas your team can annotate — the gameplan command line tool",
   "type": "module",
   "license": "MIT",
@@ -25,8 +25,8 @@
     "postbuild": "chmod +x dist/index.js"
   },
   "dependencies": {
-    "gameplan-core": "0.1.1",
-    "gameplan-server": "0.1.1"
+    "gameplan-core": "0.1.2",
+    "gameplan-server": "0.1.2"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
