@@ -1,13 +1,13 @@
 import type { SceneBuilder } from "../elements.js";
-import type { DiagramSpec } from "../diagram.js";
+import type { LayoutDiagram } from "../diagram.js";
 
 /**
  * The layout catalogue. Each entry is a self-contained algorithm that knows
- * how to turn one `DiagramSpec` variant into Excalidraw elements — `graph`
+ * how to turn one `LayoutDiagram` variant into Excalidraw elements — `graph`
  * (dagre, with optional clustering) and `sequence` (actor lifelines) ship
  * built in. Adding a new diagram kind later is: write a module exporting a
  * function of this shape, call `registerDiagramLayout` with it, and add the
- * matching branch to `DiagramSpec`'s discriminated union — nothing else in
+ * matching branch to `LayoutDiagram`'s discriminated union — nothing else in
  * the render path needs to change.
  */
 
@@ -45,15 +45,15 @@ export interface DiagramLayoutResult {
   height: number;
 }
 
-export type DiagramLayoutFn<T extends DiagramSpec = DiagramSpec> = (
+export type DiagramLayoutFn<T extends LayoutDiagram = LayoutDiagram> = (
   spec: T,
   builder: SceneBuilder,
   ctx: DiagramLayoutCtx,
 ) => DiagramLayoutResult;
 
-const catalogue = new Map<DiagramSpec["layout"], DiagramLayoutFn<never>>();
+const catalogue = new Map<LayoutDiagram["layout"], DiagramLayoutFn<never>>();
 
-export function registerDiagramLayout<T extends DiagramSpec>(
+export function registerDiagramLayout<T extends LayoutDiagram>(
   name: T["layout"],
   fn: DiagramLayoutFn<T>,
 ): void {
@@ -61,7 +61,7 @@ export function registerDiagramLayout<T extends DiagramSpec>(
 }
 
 export function getDiagramLayout(name: string): DiagramLayoutFn<never> | undefined {
-  return catalogue.get(name as DiagramSpec["layout"]);
+  return catalogue.get(name as LayoutDiagram["layout"]);
 }
 
 export function listDiagramLayouts(): string[] {

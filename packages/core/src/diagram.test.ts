@@ -255,3 +255,51 @@ describe("sequence layout", () => {
     expect(JSON.stringify(a.scene)).toBe(JSON.stringify(b.scene));
   });
 });
+
+describe("multi-panel diagram", () => {
+  const PANELS = fileURLToPath(
+    new URL("../../../examples/agent-gateway.diagram.yaml", import.meta.url),
+  );
+  const load = () => parseDiagramYaml(readFileSync(PANELS, "utf8"));
+
+  it("renders each panel as its own titled frame, with panel:node ids", () => {
+    const { scene, snapshot } = renderDiagram(load(), { now: FIXED_NOW });
+    const frames = scene.elements.filter((e) => e.type === "frame");
+    expect(frames.map((f) => (f as { name: string }).name)).toEqual([
+      "Architecture",
+      "One chat message, end to end",
+    ]);
+    const nodeIds = Object.values(snapshot.elements).map((e) => e.nodeId);
+    expect(nodeIds).toContain("architecture:gateway");
+    expect(nodeIds).toContain("chat-roundtrip:gateway");
+  });
+
+  it("is byte-identical across re-renders", () => {
+    const a = renderDiagram(load(), { now: FIXED_NOW });
+    const b = renderDiagram(load(), { now: FIXED_NOW });
+    expect(JSON.stringify(a.scene)).toBe(JSON.stringify(b.scene));
+  });
+
+  it("reports dangling references and duplicate panels by panel id", () => {
+    expect(() =>
+      parseDiagramSpec({
+        id: "d",
+        title: "t",
+        panels: [
+          {
+            id: "p",
+            title: "P",
+            layout: "graph",
+            nodes: [{ id: "a", label: "A" }],
+            edges: [{ from: "a", to: "ghost" }],
+          },
+          { id: "p", title: "P2", layout: "graph", nodes: [{ id: "a", label: "A" }] },
+        ],
+      }),
+    ).toThrow(/panel "p": edges\[0\] references unknown node "ghost"[\s\S]*duplicate panel id "p"/);
+  });
+
+  it("leaves single-layout diagrams unchanged", () => {
+    expect(loadGraph()).not.toHaveProperty("panels");
+  });
+});
