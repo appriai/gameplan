@@ -257,21 +257,40 @@ describe("sequence layout", () => {
 });
 
 describe("multi-panel diagram", () => {
-  const PANELS = fileURLToPath(
-    new URL("../../../examples/agent-gateway.diagram.yaml", import.meta.url),
-  );
-  const load = () => parseDiagramYaml(readFileSync(PANELS, "utf8"));
+  const PANELS = `
+id: checkout
+title: Checkout
+panels:
+  - id: architecture
+    title: Architecture
+    layout: graph
+    nodes:
+      - { id: web, label: Web app }
+      - { id: api, label: API }
+    edges:
+      - { from: web, to: api }
+  - id: purchase
+    title: One purchase, end to end
+    layout: sequence
+    actors:
+      - { id: web, label: Web }
+      - { id: api, label: API }
+    messages:
+      - { from: web, to: api, label: pay }
+      - { from: api, to: web, label: receipt, style: return }
+`;
+  const load = () => parseDiagramYaml(PANELS);
 
   it("renders each panel as its own titled frame, with panel:node ids", () => {
     const { scene, snapshot } = renderDiagram(load(), { now: FIXED_NOW });
     const frames = scene.elements.filter((e) => e.type === "frame");
     expect(frames.map((f) => (f as { name: string }).name)).toEqual([
       "Architecture",
-      "One chat message, end to end",
+      "One purchase, end to end",
     ]);
     const nodeIds = Object.values(snapshot.elements).map((e) => e.nodeId);
-    expect(nodeIds).toContain("architecture:gateway");
-    expect(nodeIds).toContain("chat-roundtrip:gateway");
+    expect(nodeIds).toContain("architecture:api");
+    expect(nodeIds).toContain("purchase:api");
   });
 
   it("is byte-identical across re-renders", () => {

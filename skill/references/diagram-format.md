@@ -103,23 +103,23 @@ is a full diagram body (`id`, `title`, optional `note`, `layout`, and that layou
 as its own titled frame, all at one `/d/<id>` URL:
 
 ```yaml
-id: agent-gateway
-title: Agent Gateway
+id: checkout
+title: Checkout
 panels:
   - id: architecture
     title: Architecture
     layout: graph
     nodes: [...]
-  - id: chat-roundtrip
-    title: One chat message, end to end
+  - id: purchase
+    title: One purchase, end to end
     layout: sequence
     actors: [...]
     messages: [...]
 ```
 
 Panel ids must be unique; node/actor ids only need to be unique within their panel. Feedback
-namespaces them by panel, e.g. `architecture:gateway`. A single-layout diagram is still valid
-as-is. See `examples/agent-gateway.diagram.yaml`.
+namespaces them by panel, e.g. `architecture:api`. A single-layout diagram is still valid
+as-is.
 
 ## Reviewing a diagram
 
