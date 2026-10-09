@@ -257,29 +257,10 @@ describe("sequence layout", () => {
 });
 
 describe("multi-panel diagram", () => {
-  const PANELS = `
-id: checkout
-title: Checkout
-panels:
-  - id: architecture
-    title: Architecture
-    layout: graph
-    nodes:
-      - { id: web, label: Web app }
-      - { id: api, label: API }
-    edges:
-      - { from: web, to: api }
-  - id: purchase
-    title: One purchase, end to end
-    layout: sequence
-    actors:
-      - { id: web, label: Web }
-      - { id: api, label: API }
-    messages:
-      - { from: web, to: api, label: pay }
-      - { from: api, to: web, label: receipt, style: return }
-`;
-  const load = () => parseDiagramYaml(PANELS);
+  const PANELS = fileURLToPath(
+    new URL("../../../examples/checkout.diagram.yaml", import.meta.url),
+  );
+  const load = () => parseDiagramYaml(readFileSync(PANELS, "utf8"));
 
   it("renders each panel as its own titled frame, with panel:node ids", () => {
     const { scene, snapshot } = renderDiagram(load(), { now: FIXED_NOW });

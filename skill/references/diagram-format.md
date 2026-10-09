@@ -119,7 +119,7 @@ panels:
 
 Panel ids must be unique; node/actor ids only need to be unique within their panel. Feedback
 namespaces them by panel, e.g. `architecture:api`. A single-layout diagram is still valid
-as-is.
+as-is. See `examples/checkout.diagram.yaml`.
 
 ## Reviewing a diagram
 
