@@ -117,7 +117,7 @@ panels:
     messages: [...]
 ```
 
-Panel ids must be unique; node/actor ids only need to be unique within their panel. Feedback
+Use `panels:` *instead of* a top-level `layout` — mixing the two is rejected, and so is a `revision` on a panel (set it at the top level). Panel ids must be unique and can't be `title` or `note`, which name the diagram's own header; node/actor ids only need to be unique within their panel. Feedback
 namespaces them by panel, e.g. `architecture:api`. A single-layout diagram is still valid
 as-is. See `examples/checkout.diagram.yaml`.
 
