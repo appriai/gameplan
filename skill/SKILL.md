@@ -224,16 +224,22 @@ gameplan draw <diagram.yaml> [--open] [--tunnel]  draw a freestyle diagram, own 
 gameplan wait <id> [--timeout s]         block until reviewers submit (default 1800s)
 gameplan feedback <id> [--json]          read the canvas now, without waiting
 gameplan list                            plans and diagrams on the server
-gameplan tunnel [id] | tunnel stop       share publicly via Cloudflare, or stop sharing
+gameplan tunnel <id> | tunnel stop       share one canvas publicly via Cloudflare, or stop sharing
+gameplan revoke <id>                     invalidate every share link for a canvas
 gameplan status | stop                   server (and tunnel) lifecycle
 ```
 
 The server autostarts on first use and keeps running, so the URL stays live while the humans
 take their time. Plans and diagrams persist under `.gameplan/` in the working directory.
 
-`--tunnel` reaches beyond the LAN — an unauthenticated `*.trycloudflare.com` URL anyone with the
-link can view and edit. Reach for it only when a reviewer genuinely isn't on the LAN, and tell
-the user you're about to expose the canvas publicly before you do. `gameplan tunnel stop` (or
+Links for other people carry a per-canvas share token (`?token=…`): whoever has the link can view
+and edit that one canvas, nothing else on the server. Hand out the printed links whole — a link
+with the token stripped just shows "This link needs a share token". If a link leaks, or the
+review is over, `gameplan revoke <id>` kills every link for that canvas.
+
+`--tunnel` reaches beyond the LAN with a public `*.trycloudflare.com` URL. Reach for it only when
+a reviewer genuinely isn't on the LAN, and tell the user you're about to expose the canvas
+publicly before you do. `gameplan tunnel stop` (or
 `gameplan stop`) when the review is done; it doesn't close itself.
 
 ## Details

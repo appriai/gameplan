@@ -61,18 +61,23 @@ const USAGE = `gameplan — review agent plans and diagrams on a live Excalidraw
   gameplan feedback <id> [--json]          read the current canvas as feedback
   gameplan list                            list plans and diagrams on the server
   gameplan open <id> [--tunnel]            open the canvas in a browser
-  gameplan tunnel [id]                     share the server (or one canvas) publicly
+  gameplan tunnel <id>                     share one canvas publicly
   gameplan tunnel stop                     tear down the public tunnel
+  gameplan revoke <id>                     invalidate a canvas's share links
   gameplan status                          is the server (and tunnel) up?
   gameplan stop                            stop the server and any tunnel
 
   wait / feedback / open take either a plan id or a diagram id — the server
   is checked to see which one it is, so you don't need to say which.
 
-  --tunnel shares the canvas beyond your LAN via a Cloudflare quick tunnel —
-  an unauthenticated *.trycloudflare.com URL, anyone with the link has full
-  read/write access. Requires \`cloudflared\` on PATH. Run \`gameplan tunnel stop\`
-  when you're done sharing; it does not close itself.
+  Share links (LAN and tunnel) carry a per-canvas token: anyone with the
+  link can view and edit that one canvas, and nothing else on the server.
+  Only this machine can reach a canvas without one. \`gameplan revoke <id>\`
+  rotates the token, so every link handed out so far stops working.
+
+  --tunnel shares the canvas beyond your LAN via a Cloudflare quick tunnel
+  (a random *.trycloudflare.com URL). Requires \`cloudflared\` on PATH. Run
+  \`gameplan tunnel stop\` when you're done sharing; it does not close itself.
 
   --port <n>     server port (default ${DEFAULT_PORT}, or $GAMEPLAN_PORT)
   data directory: ${DATA_DIR} (or $GAMEPLAN_DATA)
@@ -106,8 +111,18 @@ async function printTunnel(port: number, kind: DocKind, id: string): Promise<voi
   }
   console.log("  starting tunnel (cloudflared)...");
   const base = await ensureTunnel(port);
-  console.log(`  public:   ${base}${docPath(kind, id)}`);
-  console.log("            ⚠ unauthenticated — anyone with this link can edit it");
+  const token = await shareToken(port, kind, id);
+  console.log(`  public:   ${base}${docPath(kind, id)}?token=${token}`);
+  console.log(`            anyone with this link can edit this canvas — \`gameplan revoke ${id}\` to cut it off`);
+}
+
+/** The canvas's share token, minted on first use. Only answered for local callers. */
+async function shareToken(port: number, kind: DocKind, id: string): Promise<string> {
+  const { token } = await api<{ token: string }>(port, `${apiPrefix(kind)}/${id}/share`, {
+    method: "POST",
+    body: "{}",
+  });
+  return token;
 }
 
 function openBrowser(url: string): void {
@@ -299,7 +314,13 @@ async function cmdTunnel(flags: Flags): Promise<number> {
     return stopped ? 0 : 1;
   }
 
+  // a bare server URL is no use to anyone now: every canvas needs its own
+  // token, so sharing is always per canvas
   const id = flags.positional[0];
+  if (!id) {
+    console.error("usage: gameplan tunnel <id>   (or `gameplan tunnel stop`)");
+    return 2;
+  }
   const port = await ensureServer(flags.port);
 
   if (!cloudflaredAvailable()) {
@@ -309,18 +330,33 @@ async function cmdTunnel(flags: Flags): Promise<number> {
     return 1;
   }
 
+  const kind = await resolveKind(port, id);
   console.log("starting tunnel (cloudflared)...");
   const base = await ensureTunnel(port);
-
-  if (id) {
-    const kind = await resolveKind(port, id);
-    console.log(`public: ${base}${docPath(kind, id)}`);
-  } else {
-    console.log(`public: ${base}`);
-    console.log("(append /p/<plan-id> or /d/<diagram-id> to share a specific canvas)");
-  }
-  console.log("⚠ unauthenticated — anyone with this link can view and edit");
+  const token = await shareToken(port, kind, id);
+  console.log(`public: ${base}${docPath(kind, id)}?token=${token}`);
+  console.log(`anyone with this link can edit this canvas, and only this one — \`gameplan revoke ${id}\` to cut it off`);
   console.log("`gameplan tunnel stop` when you're done sharing");
+  return 0;
+}
+
+async function cmdRevoke(flags: Flags): Promise<number> {
+  const id = flags.positional[0];
+  if (!id) {
+    console.error("usage: gameplan revoke <id>");
+    return 2;
+  }
+  const port = await ensureServer(flags.port);
+  const kind = await resolveKind(port, id);
+  const { token } = await api<{ token: string }>(port, `${apiPrefix(kind)}/${id}/share`, {
+    method: "DELETE",
+    body: "{}",
+  });
+  console.log(`revoked every share link for ${kind} "${id}" — remote reviewers were disconnected`);
+  const doc = await api<{ lan?: string }>(port, `${apiPrefix(kind)}/${id}`);
+  if (doc.lan) console.log(`new team link: ${doc.lan}`);
+  const tunnel = await tunnelStatus();
+  if (tunnel) console.log(`new public link: ${tunnel.url}${docPath(kind, id)}?token=${token}`);
   return 0;
 }
 
@@ -371,6 +407,8 @@ async function main(): Promise<number> {
       return cmdOpen(flags);
     case "tunnel":
       return cmdTunnel(flags);
+    case "revoke":
+      return cmdRevoke(flags);
     case "status":
       return cmdStatus(flags);
     case "stop":
