@@ -48,18 +48,37 @@ bridges. It can still guess wrong.
 - For a reviewer outside your LAN entirely, use `--tunnel` — see below — rather than reaching
   for `ngrok`/`cloudflared` by hand.
 
+## "This link needs a share token"
+
+Everyone except the machine running gameplan needs the canvas's share token — LAN reviewers
+included. The link was copied without its `?token=…` (or the token was revoked since). Re-print
+it with `gameplan open <id>` (LAN) or `gameplan tunnel <id>` (public).
+
+How the server tells "this machine" from everyone else: the request comes from loopback **and**
+carries no proxy headers. `cloudflared` connects from loopback too, but Cloudflare's edge always
+adds `cf-connecting-ip`, so tunnelled requests still need a token. If you put some other
+reverse proxy on this machine in front of gameplan, make sure it sets `X-Forwarded-For` —
+otherwise everything it forwards looks local and skips the token check.
+
+A reviewer whose link was revoked mid-session sees the canvas stop syncing with "this share
+link was revoked"; their tab won't reconnect. Send them the new link.
+
+Tokens live in `.gameplan/shares.json` (mode 0600) so links survive a server restart.
+
 ## Sharing beyond the LAN with `--tunnel`
 
-`gameplan render/draw/open --tunnel`, or `gameplan tunnel [id]` against an already-running
-server, opens a Cloudflare **quick tunnel**: an account-less, unauthenticated
-`https://<random-words>.trycloudflare.com` URL that proxies straight to your local server.
+`gameplan render/draw/open --tunnel`, or `gameplan tunnel <id>` against an already-running
+server, opens a Cloudflare **quick tunnel**: an account-less
+`https://<random-words>.trycloudflare.com` URL that proxies straight to your local server, and
+prints that canvas's link with its share token.
 Requires `cloudflared` on PATH (`apt install cloudflared`, `brew install cloudflared`, or
 https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/).
 
-- **There's no auth in front of it.** The random hostname is the only thing protecting whatever
-  plan or diagram it's serving — anyone with the link has full read/write access, same as a
-  local reviewer. Treat the link like you'd treat a paste of the plan's contents: fine for a
-  quick review with someone specific, not for anything sensitive or long-lived.
+- **The token is the access control.** Anyone with the full link can view and edit that one
+  canvas; without the token the tunnel serves nothing but a "needs a share token" page, and no
+  token ever reaches the listing, other canvases, or creating/deleting anything. Treat a link
+  like a paste of that canvas's contents, and `gameplan revoke <id>` when the review is done or
+  a link went somewhere it shouldn't.
 - The tunnel is a separate process from the gameplan server; it does **not** stop on its own.
   Run `gameplan tunnel stop` when you're done, or `gameplan stop` (which tears down both).
   `gameplan status` shows whether one is currently up.
