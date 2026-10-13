@@ -95,6 +95,32 @@ messages:                     # rendered top-to-bottom in array order — that o
 At least two actors, at least one message. `style: return` renders dashed — use it for the
 response leg of a call, not just anything flowing "backward".
 
+## Multiple panels
+
+To show more than one layout on one canvas — say the architecture (`graph`) and a request's
+path through it (`sequence`) — replace the top-level `layout` with a `panels:` array. Each panel
+is a full diagram body (`id`, `title`, optional `note`, `layout`, and that layout's fields), drawn
+as its own titled frame, all at one `/d/<id>` URL:
+
+```yaml
+id: checkout
+title: Checkout
+panels:
+  - id: architecture
+    title: Architecture
+    layout: graph
+    nodes: [...]
+  - id: purchase
+    title: One purchase, end to end
+    layout: sequence
+    actors: [...]
+    messages: [...]
+```
+
+Panel ids must be unique; node/actor ids only need to be unique within their panel. Feedback
+namespaces them by panel, e.g. `architecture:api`. A single-layout diagram is still valid
+as-is. See `examples/checkout.diagram.yaml`.
+
 ## Reviewing a diagram
 
 Same protocol as a plan: the colour-coded sticky palette, drag an arrow to pin a note to a

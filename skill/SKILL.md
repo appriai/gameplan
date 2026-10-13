@@ -195,6 +195,9 @@ Same rule as a plan spec: structure in, no coordinates — dagre (for `graph`) o
 lane layout (for `sequence`) owns the geometry. Full field reference, both layout kinds, and how
 to add a new layout kind to the catalogue: `references/diagram-format.md`.
 
+To put several layouts on one canvas (e.g. a `graph` and a `sequence`), use a `panels:` array
+instead of a top-level `layout` — see "Multiple panels" in `references/diagram-format.md`.
+
 `gameplan wait` / `gameplan feedback` / `gameplan open` all accept a diagram id exactly like a
 plan id — the CLI checks which one it is, so you never need to say.
 
