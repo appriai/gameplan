@@ -66,7 +66,8 @@ ln -s "$PWD/skill" ~/.claude/skills/gameplan
 The agent writes a **PlanSpec** (or, for a freestyle diagram, a **DiagramSpec**) — semantic
 YAML, no coordinates. The layout engine owns geometry, because models describe intent well and
 place geometry badly. Diagrams pick a layout from a small, extensible **catalogue** —
-`graph` (dagre, with optional clustering) and `sequence` (actor lifelines) ship built in; a new
+`graph` (dagre, with optional clustering), `flowchart` (hand-drawn ovals, boxes and decision
+diamonds) and `sequence` (actor lifelines) ship built in; a new
 kind is a module in `packages/core/src/diagrams/` plus one registration call, not a rewrite.
 
 Every generated element carries `customData.gameplan`, so the split between "what the agent

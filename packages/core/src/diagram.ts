@@ -77,6 +77,47 @@ const GRAPH_BODY = {
 export const GraphDiagram = DiagramBase.extend(GRAPH_BODY);
 export type GraphDiagram = z.infer<typeof GraphDiagram>;
 
+// ------------------------------------------------------------ flowchart
+
+/**
+ * The classic flowchart vocabulary: `terminator` (start/end, drawn as an
+ * oval), `process` (a step, a box) and `decision` (a question, a diamond).
+ */
+export const FlowchartShape = z.enum(["terminator", "process", "decision"]);
+export type FlowchartShape = z.infer<typeof FlowchartShape>;
+
+export const FlowchartNode = z.object({
+  id: nodeId,
+  label: z.string().min(1),
+  shape: FlowchartShape.default("process"),
+  /** defaults per shape: terminators green, decisions yellow, processes blue */
+  color: DiagramColor.optional(),
+});
+export type FlowchartNode = z.infer<typeof FlowchartNode>;
+
+export const FlowchartEdge = z.object({
+  from: nodeId,
+  to: nodeId,
+  /** a decision's branch — "yes", "no", "retry" */
+  label: z.string().optional(),
+  style: z.enum(["solid", "dashed"]).default("solid"),
+});
+export type FlowchartEdge = z.infer<typeof FlowchartEdge>;
+
+/** The flowchart layout's own fields, independent of where the diagram lives. */
+const FLOWCHART_BODY = {
+  layout: z.literal("flowchart"),
+  /** TB reads like a procedure; LR suits a wide, shallow flow */
+  direction: z.enum(["TB", "LR"]).default("TB"),
+  /** `sketch` draws it rough and pencil-hatched, like a whiteboard; `clean` draws it crisp */
+  style: z.enum(["sketch", "clean"]).default("sketch"),
+  nodes: z.array(FlowchartNode).min(1),
+  edges: z.array(FlowchartEdge).default([]),
+} as const;
+
+export const FlowchartDiagram = DiagramBase.extend(FLOWCHART_BODY);
+export type FlowchartDiagram = z.infer<typeof FlowchartDiagram>;
+
 // ------------------------------------------------------------- sequence
 
 export const SequenceActor = z.object({
@@ -107,7 +148,11 @@ export type SequenceDiagram = z.infer<typeof SequenceDiagram>;
 // ------------------------------------------------------------------ any
 
 /** A standalone diagram with a single layout — the original form. */
-export const LayoutDiagram = z.discriminatedUnion("layout", [GraphDiagram, SequenceDiagram]);
+export const LayoutDiagram = z.discriminatedUnion("layout", [
+  GraphDiagram,
+  FlowchartDiagram,
+  SequenceDiagram,
+]);
 export type LayoutDiagram = z.infer<typeof LayoutDiagram>;
 
 /**
@@ -116,6 +161,7 @@ export type LayoutDiagram = z.infer<typeof LayoutDiagram>;
  */
 export const PlanDiagram = z.discriminatedUnion("layout", [
   DiagramIdentity.extend(GRAPH_BODY),
+  DiagramIdentity.extend(FLOWCHART_BODY),
   DiagramIdentity.extend(SEQUENCE_BODY),
 ]);
 export type PlanDiagram = z.infer<typeof PlanDiagram>;
@@ -158,6 +204,19 @@ export function checkDiagramReferences(spec: LayoutDiagram | PlanDiagram): strin
     for (const cluster of spec.clusters) {
       if (seenClusters.has(cluster.id)) issues.push(`duplicate cluster id "${cluster.id}"`);
       seenClusters.add(cluster.id);
+    }
+    spec.edges.forEach((edge, i) => {
+      if (!nodeIds.has(edge.from)) issues.push(`edges[${i}] references unknown node "${edge.from}"`);
+      if (!nodeIds.has(edge.to)) issues.push(`edges[${i}] references unknown node "${edge.to}"`);
+    });
+  }
+
+  if (spec.layout === "flowchart") {
+    const nodeIds = new Set(spec.nodes.map((n) => n.id));
+    const seen = new Set<string>();
+    for (const node of spec.nodes) {
+      if (seen.has(node.id)) issues.push(`duplicate node id "${node.id}"`);
+      seen.add(node.id);
     }
     spec.edges.forEach((edge, i) => {
       if (!nodeIds.has(edge.from)) issues.push(`edges[${i}] references unknown node "${edge.from}"`);

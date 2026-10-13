@@ -6,12 +6,14 @@ import { METRICS, PALETTE, TYPE_SCALE } from "../theme.js";
 import { getDiagramLayout, listDiagramLayouts, registerDiagramLayout } from "./registry.js";
 import { layoutDiagramFrames } from "./panels.js";
 import { layoutDiagramHeader } from "./header.js";
+import { layoutFlowchart } from "./flowchart.js";
 import { layoutGraph } from "./graph.js";
 import { layoutSequence } from "./sequence.js";
 
 // the catalogue: registered once, here, so "what diagram kinds exist" has
 // one visible answer rather than being scattered across side-effect imports
 registerDiagramLayout("graph", layoutGraph);
+registerDiagramLayout("flowchart", layoutFlowchart);
 registerDiagramLayout("sequence", layoutSequence);
 
 export { listDiagramLayouts };

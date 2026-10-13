@@ -10,6 +10,7 @@ import { listDiagramLayouts } from "./diagrams/registry.js";
 const ARCHITECTURE = fileURLToPath(
   new URL("../../../examples/system-architecture.diagram.yaml", import.meta.url),
 );
+const FLOWCHART = fileURLToPath(new URL("../../../examples/deploy.flowchart.yaml", import.meta.url));
 const SEQUENCE = fileURLToPath(new URL("../../../examples/login-flow.diagram.yaml", import.meta.url));
 
 const FIXED_NOW = 1_700_000_000_000;
@@ -218,6 +219,114 @@ describe("graph layout", () => {
     expect(first.x !== second.x || first.y !== second.y).toBe(true);
   });
 });
+
+describe("flowchart layout", () => {
+  const load = () => parseDiagramYaml(readFileSync(FLOWCHART, "utf8"));
+  const render = (spec = load()) => renderDiagram(spec, { now: FIXED_NOW });
+  const nodeShape = (scene: ReturnType<typeof render>["scene"], id: string) =>
+    scene.elements.find(
+      (e) => e.customData?.gameplan?.nodeId === id && e.customData.gameplan.role === "diagram-node" && e.type !== "text",
+    )!;
+
+  it("is in the catalogue and produces a structurally valid scene", () => {
+    expect(listDiagramLayouts()).toContain("flowchart");
+    const { scene } = render();
+    const { ids, bad } = scanIntegrity(scene);
+    expect(bad).toEqual([]);
+    expect(ids.size).toBe(scene.elements.length);
+  });
+
+  it("draws each flowchart shape as its Excalidraw counterpart", () => {
+    const { scene } = render();
+    expect(nodeShape(scene, "start").type).toBe("ellipse");
+    expect(nodeShape(scene, "build").type).toBe("rectangle");
+    expect(nodeShape(scene, "green").type).toBe("diamond");
+  });
+
+  it("draws sketch rough and hatched, and clean crisp and solid", () => {
+    const sketch = nodeShape(render().scene, "build");
+    expect(sketch.roughness).toBe(2);
+    expect(sketch.fillStyle).toBe("hachure");
+
+    const clean = nodeShape(render({ ...load(), style: "clean" } as never).scene, "build");
+    expect(clean.roughness).toBe(0);
+    expect(clean.fillStyle).toBe("solid");
+  });
+
+  it("routes a loop back up the chart, and draws forward edges straight", () => {
+    const { scene } = render();
+    const arrows = scene.elements.filter((e) => e.type === "arrow") as { id: string; points: number[][] }[];
+    const retry = arrows.find((a) => a.id === nodeArrowId(scene, "fix", "build"))!;
+    expect(retry.points.length).toBeGreaterThan(2);
+    const forward = arrows.filter((a) => a !== retry);
+    expect(forward.every((a) => a.points.length === 2)).toBe(true);
+  });
+
+  it("ends arrows on a diamond's outline, not its bounding box", () => {
+    const { scene } = render();
+    const diamond = nodeShape(scene, "green");
+    const arrow = scene.elements.find(
+      (e) => e.type === "arrow" && (e as { endBinding?: { elementId: string } }).endBinding?.elementId === diamond.id,
+    ) as { x: number; y: number; points: number[][] };
+    const last = arrow.points[arrow.points.length - 1]!;
+    const end = { x: arrow.x + last[0]!, y: arrow.y + last[1]! };
+    const cx = diamond.x + diamond.width / 2;
+    const cy = diamond.y + diamond.height / 2;
+    // |x|/halfW + |y|/halfH = 1 on the outline; the arrow stops a few px outside it
+    const along = Math.abs(end.x - cx) / (diamond.width / 2) + Math.abs(end.y - cy) / (diamond.height / 2);
+    expect(along).toBeGreaterThan(1);
+    expect(along).toBeLessThan(1.25);
+  });
+
+  it("groups each label with its shape so they move together", () => {
+    const { scene } = render();
+    const shape = nodeShape(scene, "approve");
+    const label = scene.elements.find(
+      (e) => e.type === "text" && e.customData?.gameplan?.nodeId === "approve",
+    )!;
+    expect(shape.groupIds.length).toBe(1);
+    expect(label.groupIds).toEqual(shape.groupIds);
+  });
+
+  it("is byte-identical across re-renders of an unchanged spec", () => {
+    expect(JSON.stringify(render().scene)).toBe(JSON.stringify(render().scene));
+  });
+
+  it("rejects an edge referencing an unknown node", () => {
+    expect(() =>
+      parseDiagramSpec({
+        id: "d",
+        title: "t",
+        layout: "flowchart",
+        nodes: [{ id: "a", label: "A" }],
+        edges: [{ from: "a", to: "ghost" }],
+      }),
+    ).toThrow(/unknown node "ghost"/);
+  });
+
+  it("works as a panel, with panel-scoped node ids", () => {
+    // a panel is versioned by its diagram, so it carries no revision of its own
+    const { revision: _revision, ...flow } = load();
+    const spec = parseDiagramSpec({ id: "d", title: "t", panels: [{ ...flow, id: "flow" }] });
+    const { snapshot } = renderDiagram(spec, { now: FIXED_NOW });
+    const nodeIds = Object.values(snapshot.elements).map((e) => e.nodeId);
+    expect(nodeIds).toContain("flow:approve");
+  });
+});
+
+function nodeArrowId(scene: ReturnType<typeof renderDiagram>["scene"], from: string, to: string): string {
+  const id = (nodeId: string) =>
+    scene.elements.find(
+      (e) => e.customData?.gameplan?.nodeId === nodeId && e.type !== "text" && e.type !== "arrow",
+    )!.id;
+  const arrow = scene.elements.find(
+    (e) =>
+      e.type === "arrow" &&
+      (e as { startBinding?: { elementId: string } }).startBinding?.elementId === id(from) &&
+      (e as { endBinding?: { elementId: string } }).endBinding?.elementId === id(to),
+  )!;
+  return arrow.id;
+}
 
 describe("sequence layout", () => {
   it("produces a structurally valid scene", () => {
