@@ -189,9 +189,15 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
     urls: diagramUrls,
     port: options.port,
     summarize: (id, doc) => {
-      const spec = (doc as { spec: { title: string; revision: number; layout: string } } | undefined)
-        ?.spec;
-      return { title: spec?.title, revision: spec?.revision, layout: spec?.layout };
+      const spec = (
+        doc as { spec: { title: string; revision: number; layout?: string; panels?: unknown[] } } | undefined
+      )?.spec;
+      // a multi-panel diagram has no single layout of its own
+      return {
+        title: spec?.title,
+        revision: spec?.revision,
+        layout: spec?.panels ? "panels" : spec?.layout,
+      };
     },
   });
 

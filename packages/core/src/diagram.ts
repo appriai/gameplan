@@ -106,9 +106,9 @@ export type SequenceDiagram = z.infer<typeof SequenceDiagram>;
 
 // ------------------------------------------------------------------ any
 
-/** A standalone diagram, rendered by `gameplan draw` at its own URL. */
-export const DiagramSpec = z.discriminatedUnion("layout", [GraphDiagram, SequenceDiagram]);
-export type DiagramSpec = z.infer<typeof DiagramSpec>;
+/** A standalone diagram with a single layout — the original form. */
+export const LayoutDiagram = z.discriminatedUnion("layout", [GraphDiagram, SequenceDiagram]);
+export type LayoutDiagram = z.infer<typeof LayoutDiagram>;
 
 /**
  * The same diagram embedded inside a PlanSpec — identical drawing fields,
@@ -121,11 +121,26 @@ export const PlanDiagram = z.discriminatedUnion("layout", [
 export type PlanDiagram = z.infer<typeof PlanDiagram>;
 
 /**
+ * A standalone diagram holding several panels, each with its own layout,
+ * rendered as titled frames on one canvas. Panels are the same shape as a
+ * plan's embedded diagrams, so they share the drawing vocabulary and the
+ * `panel:node` id namespacing.
+ */
+export const PanelsDiagram = DiagramBase.extend({
+  panels: z.array(PlanDiagram).min(1),
+});
+export type PanelsDiagram = z.infer<typeof PanelsDiagram>;
+
+/** A standalone diagram, rendered by `gameplan draw` at its own URL. */
+export const DiagramSpec = z.union([LayoutDiagram, PanelsDiagram]);
+export type DiagramSpec = z.infer<typeof DiagramSpec>;
+
+/**
  * Dangling-reference checks over a diagram's body. Exported so a plan can run
  * the same validation over each diagram it embeds — an edge pointing at a
  * node that doesn't exist is exactly as broken either way.
  */
-export function checkDiagramReferences(spec: DiagramSpec | PlanDiagram): string[] {
+export function checkDiagramReferences(spec: LayoutDiagram | PlanDiagram): string[] {
   const issues: string[] = [];
 
   if (spec.layout === "graph") {
@@ -167,18 +182,34 @@ export function checkDiagramReferences(spec: DiagramSpec | PlanDiagram): string[
 }
 
 export function parseDiagramSpec(input: unknown): DiagramSpec {
-  const result = DiagramSpec.safeParse(input);
+  // pick the schema by shape up front: a z.union would bury the real problem
+  // under "invalid input" errors from whichever branch wasn't meant
+  const hasPanels = typeof input === "object" && input !== null && "panels" in input;
+  const result = (hasPanels ? PanelsDiagram : LayoutDiagram).safeParse(input);
   if (!result.success) {
     const issues = result.error.issues.map(
       (i) => `${i.path.join(".") || "(root)"}: ${i.message}`,
     );
     throw new SpecError(`invalid diagram spec:\n  ${issues.join("\n  ")}`, issues);
   }
-  const refIssues = checkDiagramReferences(result.data);
+  const data: DiagramSpec = result.data;
+  const refIssues: string[] = [];
+  if ("panels" in data) {
+    const seen = new Set<string>();
+    for (const panel of data.panels) {
+      if (seen.has(panel.id)) refIssues.push(`duplicate panel id "${panel.id}"`);
+      seen.add(panel.id);
+      for (const issue of checkDiagramReferences(panel)) {
+        refIssues.push(`panel "${panel.id}": ${issue}`);
+      }
+    }
+  } else {
+    refIssues.push(...checkDiagramReferences(data));
+  }
   if (refIssues.length > 0) {
     throw new SpecError(`invalid diagram spec:\n  ${refIssues.join("\n  ")}`, refIssues);
   }
-  return result.data;
+  return data;
 }
 
 export function parseDiagramYaml(source: string): DiagramSpec {

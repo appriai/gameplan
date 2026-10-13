@@ -1,0 +1,27 @@
+id: checkout
+title: Checkout
+note: The architecture, and one purchase's round trip through it.
+panels:
+  - id: architecture
+    title: Architecture
+    layout: graph
+    direction: LR
+    nodes:
+      - { id: web, label: Web app }
+      - { id: api, label: API, color: blue }
+      - { id: payments, label: Payments service, color: green }
+    edges:
+      - { from: web, to: api, label: pay }
+      - { from: api, to: payments, label: charge }
+  - id: purchase
+    title: One purchase, end to end
+    layout: sequence
+    actors:
+      - { id: web, label: Web }
+      - { id: api, label: API }
+      - { id: payments, label: Payments }
+    messages:
+      - { from: web, to: api, label: pay }
+      - { from: api, to: payments, label: charge }
+      - { from: payments, to: api, label: approved, style: return }
+      - { from: api, to: web, label: receipt, style: return }
