@@ -13,14 +13,15 @@ has no `revision` of its own, since the plan around it owns that. See
 
 ## Choosing a layout kind
 
-The `layout` field selects which algorithm in the catalogue lays it out. Two ship today:
+The `layout` field selects which algorithm in the catalogue lays it out. Three ship today:
 
 | `layout` | Use for | Reads like |
 |---|---|---|
 | `graph` | Architecture, dependency graphs, data flow, call graphs | Boxes and arrows, auto-laid-out by dagre |
+| `flowchart` | A procedure or decision flow — what happens, in what order, and where it branches | Ovals, boxes and decision diamonds, hand-drawn |
 | `sequence` | A specific interaction over time — a request's path through a system | Actor columns, messages flowing down through time |
 
-If neither fits — a state machine, an ER diagram — say so rather than forcing a `graph` to
+If none fits — a state machine, an ER diagram — say so rather than forcing a `graph` to
 look like something it isn't. The catalogue is meant to grow; see "Adding a layout kind" below.
 
 ## `graph`
@@ -63,6 +64,44 @@ something risky, `flag` for a goal/destination, `check` for a verified/done stat
 something removed or rejected, `none` for a plain box. Colour carries the rest of the meaning —
 `green` for new/healthy, `red` for risk, `blue` for a normal service, `grey` for out-of-band or
 read-only.
+
+## `flowchart`
+
+```yaml
+id: deploy-flow
+title: Deploying a release
+layout: flowchart
+direction: TB                 # TB reads like a procedure (default); LR suits a wide, shallow flow
+style: sketch                 # sketch (default): rough strokes, pencil hatching | clean: crisp, solid
+
+nodes:
+  - id: start
+    label: Merge to main
+    shape: terminator         # terminator (oval: start/end) | process (box, default) | decision (diamond)
+  - id: green
+    label: Tests pass?
+    shape: decision
+  - id: fix
+    label: Fix the failing test
+    color: red                # optional — defaults: terminator green, process blue, decision yellow
+
+edges:
+  - from: green
+    to: fix
+    label: "no"               # a decision's branch; quote yes/no so YAML keeps them as strings
+  - from: fix
+    to: build
+    label: retry
+    style: dashed             # solid | dashed
+```
+
+Reach for `flowchart` over `graph` when the reader follows a path through it — steps, a
+question, a branch — rather than surveying a system. Phrase decisions as questions and label
+every edge leaving one. Forward edges are drawn straight; an edge back to an earlier step is
+routed around the steps in between, so loops ("retry", "try again") read naturally.
+
+Labels wrap to at most three lines inside their shape — keep them to a few words. See
+`examples/deploy.flowchart.yaml`.
 
 ## `sequence`
 

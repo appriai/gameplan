@@ -93,8 +93,21 @@ export interface ArrowArgs {
   nodeId?: string;
   strokeColor?: string;
   strokeStyle?: StrokeStyle;
+  strokeWidth?: number;
+  roughness?: number;
   opacity?: number;
   frameId?: string | null;
+  /**
+   * Stop at the outline of an ellipse or diamond rather than at its bounding
+   * box. Opt-in so existing scenes (plan step dots) render byte-identically.
+   */
+  hugShape?: boolean;
+  /**
+   * Bend points between the two ends, in absolute scene coordinates — a
+   * layout's routed path, so a loop back to an earlier node curves around
+   * the nodes in between instead of cutting straight through them.
+   */
+  via?: { x: number; y: number }[];
 }
 
 export interface PathArgs {
@@ -355,8 +368,12 @@ export class SceneBuilder {
     const fromCenter = { x: from.x + from.width / 2, y: from.y + from.height / 2 };
     const toCenter = { x: to.x + to.width / 2, y: to.y + to.height / 2 };
 
-    const start = edgePoint(from, toCenter, gap);
-    const end = edgePoint(to, fromCenter, gap);
+    const via = args.via ?? [];
+    const start = edgePoint(from, via[0] ?? toCenter, gap, args.hugShape);
+    const end = edgePoint(to, via[via.length - 1] ?? fromCenter, gap, args.hugShape);
+    const route = [start, ...via, end];
+    const xs = route.map((p) => p.x - start.x);
+    const ys = route.map((p) => p.y - start.y);
 
     const el: ExcalidrawArrowElement = {
       ...this.base({
@@ -365,21 +382,19 @@ export class SceneBuilder {
         nodeId: args.nodeId,
         x: start.x,
         y: start.y,
-        width: Math.abs(end.x - start.x),
-        height: Math.abs(end.y - start.y),
+        width: Math.max(...xs) - Math.min(...xs),
+        height: Math.max(...ys) - Math.min(...ys),
         strokeColor: args.strokeColor ?? PALETTE.muted,
         backgroundColor: PALETTE.transparent,
         strokeStyle: args.strokeStyle ?? "solid",
-        strokeWidth: 2,
+        strokeWidth: args.strokeWidth ?? 2,
+        roughness: args.roughness,
         roundness: { type: 2 },
         frameId: args.frameId ?? null,
         opacity: args.opacity ?? 100,
       }),
       type: "arrow",
-      points: [
-        [0, 0],
-        [Math.round(end.x - start.x), Math.round(end.y - start.y)],
-      ],
+      points: route.map((p) => [Math.round(p.x - start.x), Math.round(p.y - start.y)]),
       lastCommittedPoint: null,
       startBinding: { elementId: from.id, focus: 0, gap },
       endBinding: { elementId: to.id, focus: 0, gap },
@@ -484,6 +499,7 @@ function edgePoint(
   el: ExcalidrawElement,
   toward: { x: number; y: number },
   gap: number,
+  hugShape = false,
 ): { x: number; y: number } {
   const cx = el.x + el.width / 2;
   const cy = el.y + el.height / 2;
@@ -493,6 +509,15 @@ function edgePoint(
 
   const halfW = el.width / 2 + gap;
   const halfH = el.height / 2 + gap;
+  if (hugShape && el.type === "diamond") {
+    // |x|/halfW + |y|/halfH = 1 along the ray
+    const scale = 1 / (Math.abs(dx) / halfW + Math.abs(dy) / halfH);
+    return { x: cx + dx * scale, y: cy + dy * scale };
+  }
+  if (hugShape && el.type === "ellipse") {
+    const scale = 1 / Math.hypot(dx / halfW, dy / halfH);
+    return { x: cx + dx * scale, y: cy + dy * scale };
+  }
   const scale = Math.min(
     dx === 0 ? Infinity : halfW / Math.abs(dx),
     dy === 0 ? Infinity : halfH / Math.abs(dy),

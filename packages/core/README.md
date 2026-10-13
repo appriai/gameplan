@@ -9,7 +9,7 @@ installed on its own unless you're building an alternative host for the plan/dia
 It owns:
 - Parsing and validating **PlanSpec** and **DiagramSpec** YAML (semantic — no coordinates)
 - The layout engine that turns that intent into positioned Excalidraw elements
-- A small, extensible diagram-layout catalogue (`graph`, `sequence`, ships built in)
+- A small, extensible diagram-layout catalogue (`graph`, `flowchart`, `sequence`, ships built in)
 - Parsing reviewer annotations back into a structured **FeedbackReport**
 
 ## Learn more
