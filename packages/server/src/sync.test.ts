@@ -400,6 +400,66 @@ edges:
     expect(planLookup.status).toBe(404);
   });
 
+  const PANELS_YAML = `
+id: test-panels
+title: Panels
+revision: 1
+panels:
+  - id: arch
+    title: Architecture
+    layout: graph
+    nodes:
+      - { id: web, label: Web }
+      - { id: api, label: API }
+    edges:
+      - { from: web, to: api }
+  - id: flow
+    title: Flow
+    layout: sequence
+    actors:
+      - { id: web, label: Web }
+      - { id: api, label: API }
+    messages:
+      - { from: web, to: api, label: call }
+`;
+
+  it("summarises a multi-panel diagram and keeps annotations when it is re-drawn", async () => {
+    const created = await post<{ id: string; layout: string }>("/api/diagrams", {
+      specYaml: PANELS_YAML,
+    });
+    expect(created.layout).toBe("panels");
+
+    const client = await Client.join("test-panels", "A", "diagram");
+    const node = client.received.find(
+      (el) => el.customData?.gameplan?.nodeId === "arch:api" && el.type === "rectangle",
+    )!;
+    client.send({
+      t: "elements",
+      elements: [
+        {
+          id: "panel-note",
+          type: "rectangle",
+          x: node.x,
+          y: node.y - 60,
+          width: 100,
+          height: 30,
+          version: 1,
+          versionNonce: 11,
+          isDeleted: false,
+          backgroundColor: "#ffec99",
+        },
+      ],
+    });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    client.close();
+
+    await post("/api/diagrams", { specYaml: PANELS_YAML.replace("revision: 1", "revision: 2") });
+    const scene = await get<{ elements: ExcalidrawElement[] }>("/api/diagrams/test-panels/scene");
+    expect(scene.elements.find((el) => el.id === "panel-note")).toBeDefined();
+    // the panel nodes keep their ids across the re-draw, so the note stays anchored
+    expect(scene.elements.find((el) => el.customData?.gameplan?.nodeId === "arch:api")).toBeDefined();
+  });
+
   it("collaborates over the same websocket protocol as plans, in its own room", async () => {
     const a = await Client.join("test-graph", "A", "diagram");
     const b = await Client.join("test-graph", "B", "diagram");

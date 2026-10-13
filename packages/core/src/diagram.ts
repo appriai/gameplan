@@ -181,10 +181,49 @@ export function checkDiagramReferences(spec: LayoutDiagram | PlanDiagram): strin
   return issues;
 }
 
+/** Top-level fields that belong to a single layout, never to a panels diagram. */
+const LAYOUT_ONLY_FIELDS = ["layout", "direction", "nodes", "edges", "clusters", "actors", "messages"];
+
+/** Panel ids the diagram's own header already uses as feedback node ids. */
+const RESERVED_PANEL_IDS = new Set(["title", "note"]);
+
+/**
+ * Mistakes zod would otherwise swallow: it strips unknown keys, so a leftover
+ * top-level `layout`/`nodes` next to `panels:` (or a `revision` on a panel)
+ * would silently vanish from the drawing instead of failing.
+ */
+function checkPanelsShape(input: Record<string, unknown>): string[] {
+  const issues: string[] = [];
+  for (const field of LAYOUT_ONLY_FIELDS) {
+    if (field in input) {
+      issues.push(`"${field}" cannot be combined with "panels" — use either a single layout or panels, not both`);
+    }
+  }
+  if (Array.isArray(input.panels)) {
+    input.panels.forEach((panel, i) => {
+      if (typeof panel !== "object" || panel === null) return;
+      if ("revision" in panel) {
+        issues.push(`panels.${i}.revision: a panel is versioned by its diagram — set "revision" at the top level`);
+      }
+      const id = (panel as { id?: unknown }).id;
+      if (typeof id === "string" && RESERVED_PANEL_IDS.has(id)) {
+        issues.push(`panels.${i}.id: "${id}" is reserved — it names the diagram's own header`);
+      }
+    });
+  }
+  return issues;
+}
+
 export function parseDiagramSpec(input: unknown): DiagramSpec {
   // pick the schema by shape up front: a z.union would bury the real problem
   // under "invalid input" errors from whichever branch wasn't meant
   const hasPanels = typeof input === "object" && input !== null && "panels" in input;
+  if (hasPanels) {
+    const shapeIssues = checkPanelsShape(input as Record<string, unknown>);
+    if (shapeIssues.length > 0) {
+      throw new SpecError(`invalid diagram spec:\n  ${shapeIssues.join("\n  ")}`, shapeIssues);
+    }
+  }
   const result = (hasPanels ? PanelsDiagram : LayoutDiagram).safeParse(input);
   if (!result.success) {
     const issues = result.error.issues.map(
