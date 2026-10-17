@@ -23,6 +23,13 @@ export const DiagramColor = z.enum(["ink", "green", "blue", "red", "yellow", "vi
 export type DiagramColor = z.infer<typeof DiagramColor>;
 
 /**
+ * How every layout draws: `sketch` is rough strokes and pencil hatching, like
+ * a whiteboard; `clean` is crisp outlines and solid fills.
+ */
+export const DiagramStyle = z.enum(["sketch", "clean"]);
+export type DiagramStyle = z.infer<typeof DiagramStyle>;
+
+/**
  * What every diagram has regardless of where it lives. `revision` is *not*
  * here: a standalone diagram owns its own revision, while one embedded in a
  * plan is versioned by the plan around it.
@@ -69,6 +76,7 @@ const GRAPH_BODY = {
   layout: z.literal("graph"),
   /** LR reads like a pipeline; TB reads like a hierarchy */
   direction: z.enum(["LR", "TB"]).default("LR"),
+  style: DiagramStyle.default("sketch"),
   nodes: z.array(GraphNode).min(1),
   edges: z.array(GraphEdge).default([]),
   clusters: z.array(GraphCluster).default([]),
@@ -109,8 +117,7 @@ const FLOWCHART_BODY = {
   layout: z.literal("flowchart"),
   /** TB reads like a procedure; LR suits a wide, shallow flow */
   direction: z.enum(["TB", "LR"]).default("TB"),
-  /** `sketch` draws it rough and pencil-hatched, like a whiteboard; `clean` draws it crisp */
-  style: z.enum(["sketch", "clean"]).default("sketch"),
+  style: DiagramStyle.default("sketch"),
   nodes: z.array(FlowchartNode).min(1),
   edges: z.array(FlowchartEdge).default([]),
 } as const;
@@ -138,6 +145,7 @@ export type SequenceMessage = z.infer<typeof SequenceMessage>;
 /** The sequence layout's own fields, independent of where the diagram lives. */
 const SEQUENCE_BODY = {
   layout: z.literal("sequence"),
+  style: DiagramStyle.default("sketch"),
   actors: z.array(SequenceActor).min(2),
   messages: z.array(SequenceMessage).min(1),
 } as const;

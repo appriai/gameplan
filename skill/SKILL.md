@@ -193,7 +193,8 @@ edges:
 
 Same rule as a plan spec: structure in, no coordinates — dagre (for `graph` and `flowchart`) or a
 time-ordered lane layout (for `sequence`) owns the geometry. For a procedure with decisions and
-branches, use `layout: flowchart` — ovals, boxes and diamonds, drawn hand-sketched by default.
+branches, use `layout: flowchart` — ovals, boxes and diamonds. Every layout is drawn
+hand-sketched by default; set `style: clean` for crisp outlines and solid fills.
 Full field reference, every layout kind, and how
 to add a new layout kind to the catalogue: `references/diagram-format.md`.
 

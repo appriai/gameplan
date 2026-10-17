@@ -6,6 +6,7 @@ import { parseDiagramSpec, parseDiagramYaml } from "./diagram.js";
 import { SpecError } from "./spec.js";
 import { renderDiagram } from "./diagrams/render.js";
 import { listDiagramLayouts } from "./diagrams/registry.js";
+import { METRICS } from "./theme.js";
 
 const ARCHITECTURE = fileURLToPath(
   new URL("../../../examples/system-architecture.diagram.yaml", import.meta.url),
@@ -410,5 +411,54 @@ describe("multi-panel diagram", () => {
 
   it("leaves single-layout diagrams unchanged", () => {
     expect(loadGraph()).not.toHaveProperty("panels");
+  });
+});
+
+describe("drawing style", () => {
+  // a graph node's icon glyph is drawn from small rectangles and lines of its
+  // own, at a fixed stroke; the style applies to the shapes around it
+  const drawn = (spec: ReturnType<typeof parseDiagramYaml>) =>
+    renderDiagram(spec, { now: FIXED_NOW }).scene.elements.filter(
+      (e) => e.width > METRICS.diagramIconSize || e.height > METRICS.diagramIconSize,
+    );
+  const shapes = (spec: ReturnType<typeof parseDiagramYaml>) =>
+    drawn(spec).filter((e) => e.customData?.gameplan?.role === "diagram-node" && e.type === "rectangle");
+  const arrows = (spec: ReturnType<typeof parseDiagramYaml>) =>
+    drawn(spec).filter((e) => e.type === "arrow" || e.type === "line");
+
+  it.each([
+    ["graph", loadGraph],
+    ["sequence", loadSequence],
+  ] as const)("draws %s sketched by default", (_, load) => {
+    const spec = load();
+    expect(spec.style).toBe("sketch");
+    expect(shapes(spec).length).toBeGreaterThan(0);
+    expect(shapes(spec).every((e) => e.roughness === 2 && e.fillStyle === "hachure")).toBe(true);
+    expect(arrows(spec).every((e) => e.roughness === 2)).toBe(true);
+  });
+
+  it.each([
+    ["graph", loadGraph],
+    ["sequence", loadSequence],
+  ] as const)("draws %s crisp and solid when clean", (_, load) => {
+    const spec = { ...load(), style: "clean" } as never;
+    expect(shapes(spec).every((e) => e.roughness === 0 && e.fillStyle === "solid")).toBe(true);
+    expect(arrows(spec).every((e) => e.roughness === 0)).toBe(true);
+  });
+
+  it("draws a graph's cluster boundary in the same style as its nodes", () => {
+    const spec = loadGraph();
+    if (spec.layout !== "graph" || spec.clusters.length === 0) throw new Error("expected a clustered graph example");
+    const cluster = renderDiagram(spec, { now: FIXED_NOW }).scene.elements.find(
+      (e) => e.customData?.gameplan?.role === "cluster" && e.type === "rectangle",
+    )!;
+    expect(cluster.roughness).toBe(2);
+    expect(cluster.strokeStyle).toBe("dashed");
+  });
+
+  it("rejects an unknown style", () => {
+    expect(() =>
+      parseDiagramSpec({ id: "d", title: "t", layout: "graph", style: "pencil", nodes: [{ id: "a", label: "A" }] }),
+    ).toThrow(/style/);
   });
 });

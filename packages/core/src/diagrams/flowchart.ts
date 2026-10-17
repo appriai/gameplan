@@ -2,11 +2,12 @@ import dagre from "@dagrejs/dagre";
 import { groupId } from "../ids.js";
 import { clampLines, measureText } from "../text.js";
 import { DIAGRAM_COLOR_STYLE, PALETTE, TYPE_SCALE, METRICS } from "../theme.js";
-import type { ExcalidrawElement, FillStyle } from "../excalidraw.js";
+import type { ExcalidrawElement } from "../excalidraw.js";
 import type { DiagramColor, FlowchartDiagram, FlowchartNode, FlowchartShape } from "../diagram.js";
 import { centeredText } from "../layout/common.js";
 import { scopedKey, scopedNodeId, type DiagramLayoutCtx, type DiagramLayoutResult } from "./registry.js";
 import type { SceneBuilder } from "../elements.js";
+import { DIAGRAM_LOOKS } from "./style.js";
 
 const LABEL_LINES = 3;
 const EDGE_LABEL_MAX_WIDTH = 120;
@@ -63,17 +64,6 @@ const SHAPES: Record<
   },
 };
 
-/** How rough the strokes are and how shapes are filled, per `style`. */
-const STYLES: Record<
-  FlowchartDiagram["style"],
-  { roughness: number; fillStyle: FillStyle; strokeWidth: number }
-> = {
-  // roughness 2 is Excalidraw's "cartoonist" setting; hachure is its pencil
-  // shading. Together they read as drawn on a whiteboard, not generated.
-  sketch: { roughness: 2, fillStyle: "hachure", strokeWidth: 2 },
-  clean: { roughness: 0, fillStyle: "solid", strokeWidth: 1.5 },
-};
-
 interface NodePlan {
   node: FlowchartNode;
   label: ReturnType<typeof clampLines>;
@@ -103,7 +93,7 @@ export function layoutFlowchart(
   const pad = METRICS.framePadding;
   const k = (key: string) => scopedKey(ctx, key);
   const n = (id: string) => scopedNodeId(ctx, id);
-  const look = STYLES[spec.style];
+  const look = DIAGRAM_LOOKS[spec.style];
   const plans = new Map(spec.nodes.map((node) => [node.id, planNode(node)]));
 
   const edgeLabels = new Map<number, ReturnType<typeof measureText>>();

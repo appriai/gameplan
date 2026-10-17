@@ -7,6 +7,7 @@ import type { GraphDiagram, GraphNode } from "../diagram.js";
 import { centeredText } from "../layout/common.js";
 import { scopedKey, scopedNodeId, type DiagramLayoutCtx, type DiagramLayoutResult } from "./registry.js";
 import type { SceneBuilder } from "../elements.js";
+import { DIAGRAM_LOOKS } from "./style.js";
 
 const ICONS: Record<string, ((builder: SceneBuilder, args: IconArgs) => void) | null> = {
   file: fileGlyph,
@@ -61,6 +62,7 @@ export function layoutGraph(
   const NODE_WIDTH = METRICS.diagramNodeWidth;
   const k = (key: string) => scopedKey(ctx, key);
   const n = (id: string) => scopedNodeId(ctx, id);
+  const look = DIAGRAM_LOOKS[spec.style];
   const plans = new Map(spec.nodes.map((node) => [node.id, planNode(node)]));
 
   const g = new dagre.graphlib.Graph({ multigraph: true, compound: true });
@@ -137,7 +139,7 @@ export function layoutGraph(
       backgroundColor: PALETTE.transparent,
       strokeStyle: "dashed",
       strokeWidth: 1.5,
-      roughness: 0,
+      roughness: look.roughness,
       frameId: ctx.frameId,
     });
     builder.text({
@@ -173,7 +175,9 @@ export function layoutGraph(
       height: plan.height,
       strokeColor: style.stroke,
       backgroundColor: style.background,
-      strokeWidth: 1.5,
+      fillStyle: look.fillStyle,
+      strokeWidth: look.strokeWidth,
+      roughness: look.roughness,
       frameId: ctx.frameId,
     });
     boxes.set(node.id, box);
@@ -233,6 +237,8 @@ export function layoutGraph(
       to,
       strokeColor: PALETTE.muted,
       strokeStyle: edge.style,
+      strokeWidth: look.strokeWidth,
+      roughness: look.roughness,
       frameId: ctx.frameId,
     });
     if (edge.label) {
