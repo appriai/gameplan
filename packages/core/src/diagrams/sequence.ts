@@ -3,6 +3,7 @@ import { METRICS, PALETTE, TYPE_SCALE } from "../theme.js";
 import type { SequenceDiagram } from "../diagram.js";
 import { centeredText } from "../layout/common.js";
 import type { SceneBuilder } from "../elements.js";
+import { DIAGRAM_LOOKS } from "./style.js";
 import { scopedKey, scopedNodeId, type DiagramLayoutCtx, type DiagramLayoutResult } from "./registry.js";
 
 const LABEL_LINES = 2;
@@ -21,6 +22,7 @@ export function layoutSequence(
   const pad = METRICS.framePadding;
   const k = (key: string) => scopedKey(ctx, key);
   const n = (id: string) => scopedNodeId(ctx, id);
+  const look = DIAGRAM_LOOKS[spec.style];
   const laneWidth = METRICS.sequenceLaneWidth;
   const rowHeight = METRICS.sequenceRowHeight;
   const headerHeight = METRICS.sequenceActorHeight;
@@ -47,6 +49,7 @@ export function layoutSequence(
       strokeColor: PALETTE.muted,
       strokeStyle: "dashed",
       strokeWidth: 1.5,
+      roughness: look.roughness,
       frameId: ctx.frameId,
     });
   });
@@ -65,7 +68,9 @@ export function layoutSequence(
       fontSize: TYPE_SCALE.body,
       backgroundColor: PALETTE.bgWhite,
       strokeColor: PALETTE.ink,
-      strokeWidth: 2,
+      fillStyle: look.fillStyle,
+      strokeWidth: look.strokeWidth,
+      roughness: look.roughness,
       frameId: ctx.frameId,
     });
   });
@@ -95,6 +100,8 @@ export function layoutSequence(
         ],
         strokeColor: PALETTE.muted,
         strokeStyle: dashed ? "dashed" : "solid",
+        strokeWidth: look.strokeWidth,
+        roughness: look.roughness,
         endArrowhead: "triangle",
         frameId: ctx.frameId,
       });
@@ -124,6 +131,8 @@ export function layoutSequence(
       ],
       strokeColor: PALETTE.ink,
       strokeStyle: dashed ? "dashed" : "solid",
+      strokeWidth: look.strokeWidth,
+      roughness: look.roughness,
       endArrowhead: msg.style === "async" ? "triangle" : "triangle",
       frameId: ctx.frameId,
     });

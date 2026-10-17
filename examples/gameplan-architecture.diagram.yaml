@@ -1,0 +1,34 @@
+id: gameplan-system
+title: gameplan architecture
+note: The four packages, and how a spec becomes a shared canvas and comes back as feedback.
+layout: graph
+direction: LR
+style: sketch
+clusters:
+  - { id: cli, label: gameplan-cli }
+  - { id: server, label: gameplan-server }
+  - { id: core, label: gameplan-core }
+  - { id: web, label: gameplan-web }
+nodes:
+  - { id: agent, label: Coding agent, note: writes YAML specs, color: violet }
+  - { id: cmd, label: gameplan CLI, note: "render · draw · wait · feedback", icon: file, cluster: cli }
+  - { id: daemon, label: Server daemon, note: autostarts and stays up, cluster: cli, color: grey }
+  - { id: tunnel, label: Cloudflare tunnel, note: optional public link, cluster: cli, color: grey }
+  - { id: api, label: HTTP API, note: "/api/plans · /api/diagrams", cluster: server, color: blue }
+  - { id: store, label: Doc store, note: "spec, scene and snapshot on disk", cluster: server, color: blue }
+  - { id: collab, label: Collab hub, note: one websocket room per canvas, cluster: server, color: blue }
+  - { id: parse, label: Spec parser, note: YAML to a validated spec, cluster: core }
+  - { id: layout, label: Layout engine, note: "graph · flowchart · sequence", cluster: core, color: yellow }
+  - { id: feedback, label: Feedback parser, note: marks to structured feedback, cluster: core }
+  - { id: canvas, label: Excalidraw canvas, note: reviewers annotate live, cluster: web, color: green }
+edges:
+  - { from: agent, to: cmd, label: spec }
+  - { from: cmd, to: api, label: HTTP }
+  - { from: daemon, to: api, label: starts, style: dashed }
+  - { from: tunnel, to: api, label: public link, style: dashed }
+  - { from: api, to: parse }
+  - { from: parse, to: layout }
+  - { from: layout, to: store, label: scene }
+  - { from: store, to: collab }
+  - { from: collab, to: canvas, label: websocket }
+  - { from: api, to: feedback, label: wait / feedback }
