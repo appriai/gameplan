@@ -5,6 +5,7 @@ import {
   parseFeedback,
   parseSpecYaml,
   parseDiagramYaml,
+  SpecError,
   renderPlan,
   renderDiagram,
   type DiagramSpec,
@@ -71,6 +72,8 @@ export function byFractionalIndex(
 
 export interface DocStoreOptions<TSpec> {
   parseYaml: (source: string) => TSpec;
+  /** Restore saved specs without relaxing validation of new renders. */
+  parseStoredYaml?: (source: string) => TSpec;
   render: (spec: TSpec) => { scene: ExcalidrawScene; snapshot: Snapshot };
   getId: (spec: TSpec) => string;
   getRevision: (spec: TSpec) => number;
@@ -104,8 +107,9 @@ export class DocStore<TSpec> {
     for (const id of entries) {
       try {
         await this.load(id);
-      } catch {
-        // a half-written directory shouldn't stop the server booting
+      } catch (err) {
+        // A bad document must not stop other documents from loading.
+        console.warn(`Failed to load document "${id}": ${err instanceof Error ? err.message : String(err)}`);
       }
     }
   }
@@ -124,7 +128,7 @@ export class DocStore<TSpec> {
     }
 
     const specYaml = await readFile(specPath, "utf8");
-    const spec = this.options.parseYaml(specYaml);
+    const spec = (this.options.parseStoredYaml ?? this.options.parseYaml)(specYaml);
     const scene = JSON.parse(await readFile(scenePath, "utf8")) as ExcalidrawScene;
     const snapshot = JSON.parse(await readFile(snapshotPath, "utf8")) as Snapshot;
 
@@ -309,6 +313,18 @@ const PLAN_OPTIONS: DocStoreOptions<PlanSpec> = {
 
 const DIAGRAM_OPTIONS: DocStoreOptions<DiagramSpec> = {
   parseYaml: parseDiagramYaml,
+  parseStoredYaml: (source) => {
+    try {
+      return parseDiagramYaml(source);
+    } catch (err) {
+      if (!(err instanceof SpecError)) throw err;
+      const spec = parseDiagramYaml(source, { allowLegacyPanels: true });
+      console.warn(
+        `Loaded legacy diagram "${spec.id}"; correct its spec before re-rendering:\n${err.message}`,
+      );
+      return spec;
+    }
+  },
   render: renderDiagram,
   getId: (s) => s.id,
   getRevision: (s) => s.revision,
