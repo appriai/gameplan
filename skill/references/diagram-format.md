@@ -121,6 +121,11 @@ Use `panels:` *instead of* a top-level `layout` — mixing the two is rejected, 
 namespaces them by panel, e.g. `architecture:api`. A single-layout diagram is still valid
 as-is. See `examples/checkout.diagram.yaml`.
 
+These checks are strict for new renders. Previously accepted saved diagrams still load with
+their existing scenes, annotations, snapshots, and review submissions unchanged. Startup warns
+with the diagram id and validation issues; correct the source YAML before re-rendering.
+Other invalid saved documents are skipped with a warning instead of silently disappearing.
+
 ## Reviewing a diagram
 
 Same protocol as a plan: the colour-coded sticky palette, drag an arrow to pin a note to a

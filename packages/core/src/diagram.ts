@@ -214,11 +214,16 @@ function checkPanelsShape(input: Record<string, unknown>): string[] {
   return issues;
 }
 
-export function parseDiagramSpec(input: unknown): DiagramSpec {
+export interface DiagramParseOptions {
+  /** Restore previously accepted saved specs; new renders must remain strict. */
+  allowLegacyPanels?: boolean;
+}
+
+export function parseDiagramSpec(input: unknown, options?: DiagramParseOptions): DiagramSpec {
   // pick the schema by shape up front: a z.union would bury the real problem
   // under "invalid input" errors from whichever branch wasn't meant
   const hasPanels = typeof input === "object" && input !== null && "panels" in input;
-  if (hasPanels) {
+  if (hasPanels && !options?.allowLegacyPanels) {
     const shapeIssues = checkPanelsShape(input as Record<string, unknown>);
     if (shapeIssues.length > 0) {
       throw new SpecError(`invalid diagram spec:\n  ${shapeIssues.join("\n  ")}`, shapeIssues);
@@ -251,7 +256,7 @@ export function parseDiagramSpec(input: unknown): DiagramSpec {
   return data;
 }
 
-export function parseDiagramYaml(source: string): DiagramSpec {
+export function parseDiagramYaml(source: string, options?: DiagramParseOptions): DiagramSpec {
   let doc: unknown;
   try {
     doc = parseYaml(source);
@@ -260,5 +265,5 @@ export function parseDiagramYaml(source: string): DiagramSpec {
       (err as Error).message,
     ]);
   }
-  return parseDiagramSpec(doc);
+  return parseDiagramSpec(doc, options);
 }
