@@ -1,0 +1,23 @@
+id: deploy-flow
+title: Deploying a release
+note: What happens between merging to main and the release going live.
+layout: flowchart
+direction: TB
+nodes:
+  - { id: start, label: Merge to main, shape: terminator }
+  - { id: build, label: Build and run tests }
+  - { id: green, label: Tests pass?, shape: decision }
+  - { id: fix, label: Fix the failing test, color: red }
+  - { id: stage, label: Stage packages on npm }
+  - { id: approve, label: Approved by a maintainer?, shape: decision }
+  - { id: live, label: Release is live, shape: terminator }
+  - { id: abandon, label: Discard the staged build, shape: terminator, color: grey }
+edges:
+  - { from: start, to: build }
+  - { from: build, to: green }
+  - { from: green, to: stage, label: "yes" }
+  - { from: green, to: fix, label: "no" }
+  - { from: fix, to: build, label: retry, style: dashed }
+  - { from: stage, to: approve }
+  - { from: approve, to: live, label: "yes" }
+  - { from: approve, to: abandon, label: "no" }

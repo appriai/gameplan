@@ -5,12 +5,12 @@ description: |
   team can annotate, instead of a wall of Markdown. Renders the plan's decision forks, ordered
   steps, code surface and risks onto a live shared canvas, then reads the reviewers'
   annotations back as structured feedback. Also draws freestyle diagrams — architecture,
-  data flow, sequence-of-calls — as their own standalone canvas, independent of any plan.
+  data flow, flowcharts, sequence-of-calls — as their own standalone canvas, independent of any plan.
   Use this whenever the user wants to review, align on, or sign off an approach before
   execution — "plan this", "show me the approach first", "let me review before you start",
   "check with the team", "what are the options here" — or when they ask for a plan on the
   canvas, a visual plan, or mention gameplan or Excalidraw for planning. Also use when the user
-  wants to sketch or draw a system diagram, architecture diagram, or sequence diagram for an
+  wants to sketch or draw a system diagram, architecture diagram, flowchart, or sequence diagram for an
   agent to produce — "draw the architecture", "diagram this flow", "sketch how X talks to Y".
   Do NOT use for tasks small enough to just do.
 ---
@@ -123,7 +123,7 @@ the steps, versioned by the plan:
 diagrams:
   - id: request-path
     title: Where the limiter sits in the request path
-    layout: graph            # or: sequence
+    layout: graph            # or: flowchart, sequence
     direction: LR
     note: Dashed box is what this plan adds.
     clusters:
@@ -179,7 +179,7 @@ sticky-note review protocol but none of the Goal/Steps/Forks structure.
 ```yaml
 id: system-architecture
 title: How auth fits into the system
-layout: graph              # or: sequence
+layout: graph              # or: flowchart, sequence
 direction: LR
 nodes:
   - id: gateway
@@ -191,8 +191,10 @@ edges:
     to: auth-api
 ```
 
-Same rule as a plan spec: structure in, no coordinates — dagre (for `graph`) or a time-ordered
-lane layout (for `sequence`) owns the geometry. Full field reference, both layout kinds, and how
+Same rule as a plan spec: structure in, no coordinates — dagre (for `graph` and `flowchart`) or a
+time-ordered lane layout (for `sequence`) owns the geometry. For a procedure with decisions and
+branches, use `layout: flowchart` — ovals, boxes and diamonds, drawn hand-sketched by default.
+Full field reference, every layout kind, and how
 to add a new layout kind to the catalogue: `references/diagram-format.md`.
 
 To put several layouts on one canvas (e.g. a `graph` and a `sequence`), use a `panels:` array
@@ -239,6 +241,6 @@ the user you're about to expose the canvas publicly before you do. `gameplan tun
 ## Details
 
 - `references/spec-format.md` — every plan field, defaults, validation rules
-- `references/diagram-format.md` — the `graph` and `sequence` layout kinds, and how to add another
+- `references/diagram-format.md` — the `graph`, `flowchart` and `sequence` layout kinds, and how to add another
 - `references/annotation-protocol.md` — what reviewers do on the canvas and how it's parsed
 - `references/troubleshooting.md` — server, port, render and sync problems
