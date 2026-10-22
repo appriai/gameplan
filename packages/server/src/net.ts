@@ -18,16 +18,24 @@ export function lanAddress(): string | undefined {
   return candidates[0]?.address;
 }
 
-function docUrls(port: number, path: string): { local: string; lan?: string } {
+/**
+ * The local link needs no token — this machine is trusted. The LAN link does:
+ * anyone else on the network is a remote caller like any other.
+ */
+function docUrls(port: number, path: string, token: string): { local: string; lan?: string } {
   const local = `http://localhost:${port}${path}`;
   const ip = lanAddress();
-  return ip ? { local, lan: `http://${ip}:${port}${path}` } : { local };
+  return ip ? { local, lan: `http://${ip}:${port}${path}?token=${token}` } : { local };
 }
 
-export function planUrls(port: number, planId: string): { local: string; lan?: string } {
-  return docUrls(port, `/p/${planId}`);
+export function planUrls(port: number, planId: string, token: string): { local: string; lan?: string } {
+  return docUrls(port, `/p/${planId}`, token);
 }
 
-export function diagramUrls(port: number, diagramId: string): { local: string; lan?: string } {
-  return docUrls(port, `/d/${diagramId}`);
+export function diagramUrls(
+  port: number,
+  diagramId: string,
+  token: string,
+): { local: string; lan?: string } {
+  return docUrls(port, `/d/${diagramId}`, token);
 }

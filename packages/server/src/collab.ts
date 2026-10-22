@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Server } from "node:http";
+import type { IncomingMessage, Server } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
 import type { ExcalidrawElement } from "gameplan-core";
 import type { DocStore } from "./store.js";
@@ -25,6 +25,8 @@ export interface Peer {
   kind: DocKind;
   docId: string;
   socket: WebSocket;
+  /** joined from this machine rather than with a share token */
+  trusted: boolean;
   pointer?: { x: number; y: number };
   selectedElementIds?: Record<string, boolean>;
 }
@@ -42,6 +44,8 @@ export interface CollabHub {
   onSubmit(listener: (kind: DocKind, id: string) => void): () => void;
   /** push a fresh scene to every client watching this document right now */
   broadcastRerender(kind: DocKind, id: string, scene: unknown): void;
+  /** drop every remote reviewer on this document — its share token just changed */
+  disconnectShared(kind: DocKind, id: string): void;
   close(): void;
 }
 
@@ -50,9 +54,16 @@ function room(kind: DocKind, id: string): string {
   return `${kind}:${id}`;
 }
 
+export interface CollabAccess {
+  /** may the client behind this upgrade request join this document? */
+  allows(req: IncomingMessage, kind: DocKind, id: string): boolean;
+  isTrusted(req: IncomingMessage): boolean;
+}
+
 export function attachCollab(
   server: Server,
   stores: Record<DocKind, DocStore<unknown>>,
+  access: CollabAccess,
 ): CollabHub {
   const wss = new WebSocketServer({ server, path: "/ws" });
   const peers = new Map<WebSocket, Peer>();
@@ -85,7 +96,15 @@ export function attachCollab(
     }));
   }
 
-  wss.on("connection", (socket) => {
+  wss.on("connection", (socket, req) => {
+    // a page on another site must not be able to open a socket from a
+    // reviewer's browser — riding their share cookie, or the author's local
+    // trust — so every browser socket has to come from the canvas's own origin
+    if (!sameOrigin(req)) {
+      socket.close(1008, "cross-origin");
+      return;
+    }
+
     socket.on("message", (raw) => {
       let msg: ClientMessage;
       try {
@@ -96,10 +115,13 @@ export function attachCollab(
 
       if (msg.t === "join") {
         const store = stores[msg.kind];
-        const scene = store?.scene(msg.id);
+        // same answer for "no such document" and "not yours": a remote
+        // caller shouldn't learn which ids exist
+        const scene = access.allows(req, msg.kind, msg.id) ? store?.scene(msg.id) : undefined;
         if (!store || !scene) {
           send(socket, { t: "error", message: `no ${msg.kind} "${msg.id}"` });
-          socket.close();
+          // policy close: tells the client not to retry
+          socket.close(1008, "not allowed");
           return;
         }
         const peer: Peer = {
@@ -109,6 +131,7 @@ export function attachCollab(
           kind: msg.kind,
           docId: msg.id,
           socket,
+          trusted: access.isTrusted(req),
         };
         peers.set(socket, peer);
         send(socket, {
@@ -192,6 +215,13 @@ export function attachCollab(
     broadcastRerender(kind, id, scene) {
       broadcast(kind, id, { t: "rerender", id, scene });
     },
+    disconnectShared(kind, id) {
+      for (const peer of peersOf(kind, id)) {
+        if (peer.trusted) continue;
+        send(peer.socket, { t: "error", message: "this share link was revoked" });
+        peer.socket.close(1008, "revoked");
+      }
+    },
     close() {
       for (const socket of peers.keys()) socket.close();
       wss.close();
@@ -211,4 +241,15 @@ function summarise(report: {
   if (report.rewrites.length) parts.push(`${report.rewrites.length} rewrite(s)`);
   if (report.reorders.length) parts.push("reordered steps");
   return parts.length > 0 ? parts.join(", ") : "no changes";
+}
+
+/** Does the upgrade's Origin match the host it was sent to? Browsers always send Origin on a websocket. */
+function sameOrigin(req: IncomingMessage): boolean {
+  const origin = req.headers.origin;
+  if (!origin) return true; // not a browser (curl, an agent): no cookie to ride
+  try {
+    return new URL(origin).host === req.headers.host;
+  } catch {
+    return false;
+  }
 }

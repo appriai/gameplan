@@ -23,10 +23,14 @@ Freestyle diagrams — not a plan review, just "draw this" — get their own sta
 gameplan draw architecture.yaml --open   # own URL (/d/<id>), same collab + annotation protocol
 ```
 
+Every link meant for someone else — the LAN URL and the tunnel URL — carries a **share token**
+(`?token=…`) that unlocks that one canvas and nothing else on the server. Only your own machine
+can open a canvas without one. `gameplan revoke <id>` rotates the token, so every link handed out
+so far stops working and anyone still connected through one is dropped.
+
 For a reviewer outside your LAN, add `--tunnel` (needs `cloudflared` on PATH) to get a public
-`*.trycloudflare.com` URL. It's unauthenticated — anyone with the link can edit — so it's opt-in
-per command, not automatic, and `gameplan tunnel stop` (or `gameplan stop`) tears it down; it
-does not expire on its own.
+`*.trycloudflare.com` URL for the canvas. It's opt-in per command, not automatic, and
+`gameplan tunnel stop` (or `gameplan stop`) tears it down; it does not expire on its own.
 
 ## Install
 

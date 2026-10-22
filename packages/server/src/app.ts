@@ -5,6 +5,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import fastifyStatic from "@fastify/static";
 import { SpecError } from "gameplan-core";
 import { attachCollab, type CollabHub, type DocKind } from "./collab.js";
+import { isHttps, isTrusted, ShareStore, shareCookie } from "./access.js";
 import { diagramUrls, planUrls } from "./net.js";
 import { DiagramStore, PlanStore, type DocStore } from "./store.js";
 
@@ -23,6 +24,7 @@ export interface RunningServer {
   store: PlanStore;
   diagrams: DiagramStore;
   hub: CollabHub;
+  shares: ShareStore;
   port: number;
   close(): Promise<void>;
 }
@@ -50,12 +52,15 @@ function registerDocRoutes(
     prefix: string;
     store: DocStore<unknown>;
     hub: CollabHub;
-    urls: (port: number, id: string) => { local: string; lan?: string };
+    shares: ShareStore;
+    urls: (port: number, id: string, token: string) => { local: string; lan?: string };
     port: number;
     summarize: (id: string, doc: ReturnType<DocStore<unknown>["get"]>) => Record<string, unknown>;
   },
 ): void {
-  const { kind, prefix, store, hub, urls, port, summarize } = opts;
+  const { kind, prefix, store, hub, shares, urls, port, summarize } = opts;
+  // the LAN link needs the document's share token; the local one doesn't
+  const linksFor = async (id: string) => urls(port, id, await shares.tokenFor(kind, id));
 
   fastify.get(prefix, async () => ({ [kind === "plan" ? "plans" : "diagrams"]: store.list() }));
 
@@ -68,7 +73,12 @@ function registerDocRoutes(
       const doc = store.render(specYaml);
       const scene = store.scene(doc.id);
       hub.broadcastRerender(kind, doc.id, scene);
-      return { id: doc.id, elements: doc.elements.size, ...urls(port, doc.id), ...summarize(doc.id, doc) };
+      return {
+        id: doc.id,
+        elements: doc.elements.size,
+        ...(await linksFor(doc.id)),
+        ...summarize(doc.id, doc),
+      };
     } catch (err) {
       if (err instanceof SpecError) {
         return reply.code(422).send({ error: err.message, issues: err.issues });
@@ -85,7 +95,7 @@ function registerDocRoutes(
       spec: doc.spec,
       updatedAt: doc.updatedAt,
       submissions: doc.submissions.length,
-      ...urls(port, doc.id),
+      ...(await linksFor(doc.id)),
       ...summarize(doc.id, doc),
     };
   });
@@ -146,7 +156,87 @@ function registerDocRoutes(
     if (!store.delete(request.params.id)) {
       return reply.code(404).send({ error: `no such ${kind}` });
     }
+    hub.disconnectShared(kind, request.params.id);
+    await shares.remove(kind, request.params.id);
     return { deleted: request.params.id };
+  });
+
+  // share tokens — local-only, enforced by the access hook in startServer
+  fastify.post<{ Params: { id: string } }>(`${prefix}/:id/share`, async (request, reply) => {
+    if (!store.get(request.params.id)) return reply.code(404).send({ error: `no such ${kind}` });
+    return { token: await shares.tokenFor(kind, request.params.id) };
+  });
+
+  /** Rotate the token: every link handed out so far stops working, and remote reviewers are dropped. */
+  fastify.delete<{ Params: { id: string } }>(`${prefix}/:id/share`, async (request, reply) => {
+    if (!store.get(request.params.id)) return reply.code(404).send({ error: `no such ${kind}` });
+    const token = await shares.rotate(kind, request.params.id);
+    hub.disconnectShared(kind, request.params.id);
+    return { token };
+  });
+}
+
+/** What a single document's share token may reach, beyond its page. */
+const SHARED_API = /^\/api\/(plans|diagrams)\/([a-zA-Z0-9_-]+)(\/(scene|feedback|wait))?$/;
+const DOC_PAGE = /^\/(p|d)\/([a-zA-Z0-9_-]+)\/?$/;
+
+const NEEDS_TOKEN_PAGE = `<!doctype html><meta charset="utf-8"><title>gameplan</title>
+<body style="font-family:system-ui,sans-serif;max-width:32rem;margin:15vh auto;padding:0 1rem;color:#1e1e1e">
+<h1 style="font-size:1.25rem">This link needs a share token</h1>
+<p>Ask whoever shared this canvas for its full link. Share links end in <code>?token=…</code>.</p>
+</body>`;
+
+/**
+ * The access gate. Local callers (the CLI, the agent, the author's browser)
+ * pass straight through. A remote caller gets static assets — the app shell
+ * holds no data — plus exactly the one document its token was minted for.
+ */
+function registerAccessGate(fastify: FastifyInstance, shares: ShareStore): void {
+  fastify.addHook("onRequest", async (request, reply) => {
+    if (isTrusted(request.raw)) return;
+
+    const url = new URL(request.url, "http://gameplan.invalid");
+    const path = url.pathname;
+    const queryToken = url.searchParams.get("token") ?? undefined;
+
+    const page = path.match(DOC_PAGE);
+    if (page) {
+      const kind: DocKind = page[1] === "p" ? "plan" : "diagram";
+      const id = page[2]!;
+      const queryTokenIsValid = queryToken !== undefined && shares.check(kind, id, queryToken);
+      if (!shares.allows(request.raw, kind, id, queryToken)) {
+        return reply.code(401).type("text/html; charset=utf-8").send(NEEDS_TOKEN_PAGE);
+      }
+      if (queryToken !== undefined) {
+        // Drop every query token from the address bar. Only one that unlocks
+        // this canvas may replace an existing credential in the cookie.
+        url.searchParams.delete("token");
+        const redirect = reply
+          .code(302)
+          .header("cache-control", "no-store")
+          .header("referrer-policy", "no-referrer")
+          .header("location", `${url.pathname}${url.search}`);
+        if (queryTokenIsValid) {
+          redirect.header("set-cookie", shareCookie(kind, id, queryToken, isHttps(request.raw)));
+        }
+        return redirect.send();
+      }
+      return;
+    }
+
+    const api = path.match(SHARED_API);
+    if (api && request.method === "GET") {
+      const kind: DocKind = api[1] === "plans" ? "plan" : "diagram";
+      if (shares.allows(request.raw, kind, api[2]!, queryToken)) return;
+      return reply.code(401).send({ error: "a share token for this document is required" });
+    }
+
+    // everything else under /api — listing, creating, deleting, minting
+    // tokens — and server status are for this machine only
+    if (path.startsWith("/api/") || path === "/health") {
+      return reply.code(403).send({ error: "only available from the machine running gameplan" });
+    }
+    // static assets and the websocket upgrade (checked per document on join) fall through
   });
 }
 
@@ -155,11 +245,22 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
   const diagrams = new DiagramStore(join(options.dataDir, "diagrams"));
   await Promise.all([store.init(), diagrams.init()]);
 
+  const shares = new ShareStore(join(options.dataDir, "shares.json"));
+  await shares.init();
+
   const fastify = Fastify({ logger: false, bodyLimit: 32 * 1024 * 1024 });
-  const hub = attachCollab(fastify.server, {
-    plan: store as unknown as DocStore<unknown>,
-    diagram: diagrams as unknown as DocStore<unknown>,
-  });
+  const hub = attachCollab(
+    fastify.server,
+    {
+      plan: store as unknown as DocStore<unknown>,
+      diagram: diagrams as unknown as DocStore<unknown>,
+    },
+    {
+      allows: (req, kind, id) => shares.allows(req, kind, id),
+      isTrusted,
+    },
+  );
+  registerAccessGate(fastify, shares);
 
   fastify.get("/health", async () => ({
     ok: true,
@@ -173,6 +274,7 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
     prefix: "/api/plans",
     store: store as unknown as DocStore<unknown>,
     hub,
+    shares,
     urls: planUrls,
     port: options.port,
     summarize: (id, doc) => {
@@ -186,6 +288,7 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
     prefix: "/api/diagrams",
     store: diagrams as unknown as DocStore<unknown>,
     hub,
+    shares,
     urls: diagramUrls,
     port: options.port,
     summarize: (id, doc) => {
@@ -220,6 +323,7 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
     store,
     diagrams,
     hub,
+    shares,
     port: options.port,
     async close() {
       hub.close();
