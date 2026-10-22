@@ -63,7 +63,12 @@ otherwise everything it forwards looks local and skips the token check.
 A reviewer whose link was revoked mid-session sees the canvas stop syncing with "this share
 link was revoked"; their tab won't reconnect. Send them the new link.
 
-Tokens live in `.gameplan/shares.json` (mode 0600) so links survive a server restart.
+Opening a valid share link stores a cookie for that canvas and removes the token from the URL.
+If a reviewer already has a valid cookie, opening a stale or invalid link does not replace it.
+
+Tokens live in `.gameplan/shares.json` (mode 0600) and are atomically saved so links survive a
+server restart. If that file is malformed, gameplan warns and leaves it in place for recovery; a
+new share or revoke later writes a fresh token file.
 
 ## Sharing beyond the LAN with `--tunnel`
 

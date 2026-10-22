@@ -1,6 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import type { IncomingMessage } from "node:http";
 import { dirname } from "node:path";
 import type { DocKind } from "./collab.js";
@@ -91,6 +91,7 @@ function digest(value: string): Buffer {
  */
 export class ShareStore {
   private tokens = new Map<string, string>();
+  private saveTail: Promise<void> = Promise.resolve();
 
   constructor(private readonly file: string) {}
 
@@ -99,8 +100,8 @@ export class ShareStore {
     try {
       const raw = JSON.parse(await readFile(this.file, "utf8")) as Record<string, string>;
       this.tokens = new Map(Object.entries(raw));
-    } catch {
-      // a corrupt file only costs outstanding links; new tokens get minted
+    } catch (error) {
+      console.warn(`gameplan could not read share tokens from ${this.file}; preserving the file: ${String(error)}`);
       this.tokens = new Map();
     }
   }
@@ -141,13 +142,25 @@ export class ShareStore {
     );
   }
 
-  private async save(): Promise<void> {
+  private save(): Promise<void> {
+    const contents = JSON.stringify(Object.fromEntries(this.tokens), null, 2);
+    const save = this.saveTail.then(() => this.writeAtomically(contents));
+    // Keep the queue alive after a failed write while returning the failure to
+    // the caller that triggered it.
+    this.saveTail = save.catch(() => undefined);
+    return save;
+  }
+
+  private async writeAtomically(contents: string): Promise<void> {
     await mkdir(dirname(this.file), { recursive: true });
-    await writeFile(this.file, JSON.stringify(Object.fromEntries(this.tokens), null, 2), {
-      encoding: "utf8",
-      mode: 0o600,
-    });
-    // writeFile's mode only applies when it creates the file
-    await chmod(this.file, 0o600);
+    const temporary = `${this.file}.${process.pid}.${randomBytes(12).toString("hex")}.tmp`;
+    try {
+      await writeFile(temporary, contents, { encoding: "utf8", mode: 0o600, flag: "wx" });
+      await chmod(temporary, 0o600);
+      await rename(temporary, this.file);
+    } catch (error) {
+      await unlink(temporary).catch(() => undefined);
+      throw error;
+    }
   }
 }

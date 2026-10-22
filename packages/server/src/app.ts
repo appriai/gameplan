@@ -203,20 +203,23 @@ function registerAccessGate(fastify: FastifyInstance, shares: ShareStore): void 
     if (page) {
       const kind: DocKind = page[1] === "p" ? "plan" : "diagram";
       const id = page[2]!;
+      const queryTokenIsValid = queryToken !== undefined && shares.check(kind, id, queryToken);
       if (!shares.allows(request.raw, kind, id, queryToken)) {
         return reply.code(401).type("text/html; charset=utf-8").send(NEEDS_TOKEN_PAGE);
       }
-      if (queryToken) {
-        // swap the token for a cookie and drop it from the address bar, so it
-        // isn't left in history or passed on when someone copies the URL
+      if (queryToken !== undefined) {
+        // Drop every query token from the address bar. Only one that unlocks
+        // this canvas may replace an existing credential in the cookie.
         url.searchParams.delete("token");
-        return reply
+        const redirect = reply
           .code(302)
-          .header("set-cookie", shareCookie(kind, id, queryToken, isHttps(request.raw)))
           .header("cache-control", "no-store")
           .header("referrer-policy", "no-referrer")
-          .header("location", `${url.pathname}${url.search}`)
-          .send();
+          .header("location", `${url.pathname}${url.search}`);
+        if (queryTokenIsValid) {
+          redirect.header("set-cookie", shareCookie(kind, id, queryToken, isHttps(request.raw)));
+        }
+        return redirect.send();
       }
       return;
     }
