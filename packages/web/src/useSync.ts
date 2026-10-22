@@ -192,8 +192,16 @@ export function useSync(
         }
       });
 
-      socket.addEventListener("close", () => {
+      socket.addEventListener("close", (event) => {
         if (disposed || closedByUs.current) return;
+        // 1008 is the server refusing us — a revoked share link, or a canvas
+        // this link doesn't cover. Retrying can't fix that, so stay on the
+        // error the server sent rather than spinning on "reconnecting…"
+        if (event.code === 1008) {
+          setError((current) => current ?? "this link no longer has access");
+          setStatus("error");
+          return;
+        }
         setStatus("reconnecting");
         const delay = retryDelay.current;
         retryDelay.current = Math.min(delay * 2, 8000);

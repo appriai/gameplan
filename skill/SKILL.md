@@ -5,12 +5,12 @@ description: |
   team can annotate, instead of a wall of Markdown. Renders the plan's decision forks, ordered
   steps, code surface and risks onto a live shared canvas, then reads the reviewers'
   annotations back as structured feedback. Also draws freestyle diagrams — architecture,
-  data flow, sequence-of-calls — as their own standalone canvas, independent of any plan.
+  data flow, flowcharts, sequence-of-calls — as their own standalone canvas, independent of any plan.
   Use this whenever the user wants to review, align on, or sign off an approach before
   execution — "plan this", "show me the approach first", "let me review before you start",
   "check with the team", "what are the options here" — or when they ask for a plan on the
   canvas, a visual plan, or mention gameplan or Excalidraw for planning. Also use when the user
-  wants to sketch or draw a system diagram, architecture diagram, or sequence diagram for an
+  wants to sketch or draw a system diagram, architecture diagram, flowchart, or sequence diagram for an
   agent to produce — "draw the architecture", "diagram this flow", "sketch how X talks to Y".
   Do NOT use for tasks small enough to just do.
 ---
@@ -123,7 +123,7 @@ the steps, versioned by the plan:
 diagrams:
   - id: request-path
     title: Where the limiter sits in the request path
-    layout: graph            # or: sequence
+    layout: graph            # or: flowchart, sequence
     direction: LR
     note: Dashed box is what this plan adds.
     clusters:
@@ -179,7 +179,7 @@ sticky-note review protocol but none of the Goal/Steps/Forks structure.
 ```yaml
 id: system-architecture
 title: How auth fits into the system
-layout: graph              # or: sequence
+layout: graph              # or: flowchart, sequence
 direction: LR
 nodes:
   - id: gateway
@@ -191,8 +191,11 @@ edges:
     to: auth-api
 ```
 
-Same rule as a plan spec: structure in, no coordinates — dagre (for `graph`) or a time-ordered
-lane layout (for `sequence`) owns the geometry. Full field reference, both layout kinds, and how
+Same rule as a plan spec: structure in, no coordinates — dagre (for `graph` and `flowchart`) or a
+time-ordered lane layout (for `sequence`) owns the geometry. For a procedure with decisions and
+branches, use `layout: flowchart` — ovals, boxes and diamonds. Every layout is drawn
+hand-sketched by default; set `style: clean` for crisp outlines and solid fills.
+Full field reference, every layout kind, and how
 to add a new layout kind to the catalogue: `references/diagram-format.md`.
 
 To put several layouts on one canvas (e.g. a `graph` and a `sequence`), use a `panels:` array
@@ -224,21 +227,27 @@ gameplan draw <diagram.yaml> [--open] [--tunnel]  draw a freestyle diagram, own 
 gameplan wait <id> [--timeout s]         block until reviewers submit (default 1800s)
 gameplan feedback <id> [--json]          read the canvas now, without waiting
 gameplan list                            plans and diagrams on the server
-gameplan tunnel [id] | tunnel stop       share publicly via Cloudflare, or stop sharing
+gameplan tunnel <id> | tunnel stop       share one canvas publicly via Cloudflare, or stop sharing
+gameplan revoke <id>                     invalidate every share link for a canvas
 gameplan status | stop                   server (and tunnel) lifecycle
 ```
 
 The server autostarts on first use and keeps running, so the URL stays live while the humans
 take their time. Plans and diagrams persist under `.gameplan/` in the working directory.
 
-`--tunnel` reaches beyond the LAN — an unauthenticated `*.trycloudflare.com` URL anyone with the
-link can view and edit. Reach for it only when a reviewer genuinely isn't on the LAN, and tell
-the user you're about to expose the canvas publicly before you do. `gameplan tunnel stop` (or
+Links for other people carry a per-canvas share token (`?token=…`): whoever has the link can view
+and edit that one canvas, nothing else on the server. Hand out the printed links whole — a link
+with the token stripped just shows "This link needs a share token". If a link leaks, or the
+review is over, `gameplan revoke <id>` kills every link for that canvas.
+
+`--tunnel` reaches beyond the LAN with a public `*.trycloudflare.com` URL. Reach for it only when
+a reviewer genuinely isn't on the LAN, and tell the user you're about to expose the canvas
+publicly before you do. `gameplan tunnel stop` (or
 `gameplan stop`) when the review is done; it doesn't close itself.
 
 ## Details
 
 - `references/spec-format.md` — every plan field, defaults, validation rules
-- `references/diagram-format.md` — the `graph` and `sequence` layout kinds, and how to add another
+- `references/diagram-format.md` — the `graph`, `flowchart` and `sequence` layout kinds, and how to add another
 - `references/annotation-protocol.md` — what reviewers do on the canvas and how it's parsed
 - `references/troubleshooting.md` — server, port, render and sync problems

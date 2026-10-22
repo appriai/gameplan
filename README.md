@@ -23,10 +23,14 @@ Freestyle diagrams — not a plan review, just "draw this" — get their own sta
 gameplan draw architecture.yaml --open   # own URL (/d/<id>), same collab + annotation protocol
 ```
 
+Every link meant for someone else — the LAN URL and the tunnel URL — carries a **share token**
+(`?token=…`) that unlocks that one canvas and nothing else on the server. Only your own machine
+can open a canvas without one. `gameplan revoke <id>` rotates the token, so every link handed out
+so far stops working and anyone still connected through one is dropped.
+
 For a reviewer outside your LAN, add `--tunnel` (needs `cloudflared` on PATH) to get a public
-`*.trycloudflare.com` URL. It's unauthenticated — anyone with the link can edit — so it's opt-in
-per command, not automatic, and `gameplan tunnel stop` (or `gameplan stop`) tears it down; it
-does not expire on its own.
+`*.trycloudflare.com` URL for the canvas. It's opt-in per command, not automatic, and
+`gameplan tunnel stop` (or `gameplan stop`) tears it down; it does not expire on its own.
 
 ## Install
 
@@ -66,7 +70,9 @@ ln -s "$PWD/skill" ~/.claude/skills/gameplan
 The agent writes a **PlanSpec** (or, for a freestyle diagram, a **DiagramSpec**) — semantic
 YAML, no coordinates. The layout engine owns geometry, because models describe intent well and
 place geometry badly. Diagrams pick a layout from a small, extensible **catalogue** —
-`graph` (dagre, with optional clustering) and `sequence` (actor lifelines) ship built in; a new
+`graph` (dagre, with optional clustering), `flowchart` (ovals, boxes and decision diamonds)
+and `sequence` (actor lifelines) ship built in, all drawn hand-sketched by default
+(`style: clean` for crisp lines); a new
 kind is a module in `packages/core/src/diagrams/` plus one registration call, not a rewrite.
 
 Every generated element carries `customData.gameplan`, so the split between "what the agent
