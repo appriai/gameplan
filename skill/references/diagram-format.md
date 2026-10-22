@@ -24,6 +24,18 @@ The `layout` field selects which algorithm in the catalogue lays it out. Three s
 If none fits — a state machine, an ER diagram — say so rather than forcing a `graph` to
 look like something it isn't. The catalogue is meant to grow; see "Adding a layout kind" below.
 
+## Drawing style
+
+Every layout takes a `style` field:
+
+```yaml
+style: sketch                 # sketch (default): rough strokes, pencil hatching | clean: crisp, solid
+```
+
+`sketch` draws the diagram like a whiteboard drawing; `clean` draws crisp outlines and solid
+fills. Leave it at `sketch` unless the reader needs a precise, formal look. Each panel and each
+diagram embedded in a plan picks its own style.
+
 ## `graph`
 
 ```yaml
@@ -72,7 +84,7 @@ id: deploy-flow
 title: Deploying a release
 layout: flowchart
 direction: TB                 # TB reads like a procedure (default); LR suits a wide, shallow flow
-style: sketch                 # sketch (default): rough strokes, pencil hatching | clean: crisp, solid
+style: sketch                 # see "Drawing style" — every layout takes it
 
 nodes:
   - id: start
@@ -161,7 +173,7 @@ Use `panels:` *instead of* a top-level `layout` — mixing the two is rejected, 
 namespaces them by panel, e.g. `architecture:api`. A single-layout diagram is still valid
 as-is. See `examples/checkout.diagram.yaml`.
 
-For a panels diagram, set `style` inside each flowchart panel, not at the top level;
+For a panels diagram, set `style` inside each panel, not at the top level;
 top-level layout fields, including `style`, are rejected alongside `panels:`.
 
 These checks are strict for new renders. Previously accepted saved diagrams still load with
@@ -182,5 +194,7 @@ to accept/reject; comments, removals and rewrites all still apply.
 The catalogue lives in `packages/core/src/diagrams/`. A new kind is: a module exporting a
 function shaped like `(spec, builder, ctx) => { width, height }` that draws into the shared
 `SceneBuilder`, a `registerDiagramLayout("name", fn)` call in `diagrams/render.ts`, and a new
-branch in `DiagramSpec`'s discriminated union in `diagram.ts`. Nothing else in the render or
+branch in `DiagramSpec`'s discriminated union in `diagram.ts`. Give the new body a
+`style: DiagramStyle.default("sketch")` field and draw with `DIAGRAM_LOOKS[spec.style]` from
+`diagrams/style.ts`, so it matches every other layout. Nothing else in the render or
 review path needs to change — the CLI, server routes, and web client are all layout-agnostic.

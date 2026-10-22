@@ -79,7 +79,7 @@ except it has **no `revision`**: the plan around it owns that.
 | `title` | string | Required. Becomes the frame name. |
 | `note` | string | Optional one-line subtitle. |
 | `layout` | `graph` \| `sequence` | Required. Selects the layout from the catalogue. |
-| …rest | — | Per layout: `nodes`/`edges`/`clusters`/`direction`, or `actors`/`messages`. |
+| …rest | — | Per layout: `nodes`/`edges`/`clusters`/`direction`, or `actors`/`messages`; every layout also takes `style` (`sketch` default, or `clean`). |
 
 Two diagrams in one plan may reuse node ids freely — `api` in one and `api` in
 another stay distinct, both on the canvas and in feedback.
