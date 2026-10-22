@@ -109,8 +109,9 @@ edges:
 
 Reach for `flowchart` over `graph` when the reader follows a path through it — steps, a
 question, a branch — rather than surveying a system. Phrase decisions as questions and label
-every edge leaving one. Forward edges are drawn straight; an edge back to an earlier step is
-routed around the steps in between, so loops ("retry", "try again") read naturally.
+every edge leaving one. Unambiguous forward edges are drawn straight; parallel branches retain
+separate routes and labels. An edge back to an earlier step is routed around the steps in between,
+so loops ("retry", "try again") read naturally.
 
 Labels wrap to at most three lines inside their shape — keep them to a few words. See
 `examples/deploy.flowchart.yaml`.
@@ -168,9 +169,17 @@ panels:
     messages: [...]
 ```
 
-Panel ids must be unique; node/actor ids only need to be unique within their panel. Feedback
+Use `panels:` *instead of* a top-level `layout` — mixing the two is rejected, and so is a `revision` on a panel (set it at the top level). Panel ids must be unique and can't be `title` or `note`, which name the diagram's own header; node/actor ids only need to be unique within their panel. Feedback
 namespaces them by panel, e.g. `architecture:api`. A single-layout diagram is still valid
 as-is. See `examples/checkout.diagram.yaml`.
+
+For a panels diagram, set `style` inside each panel, not at the top level;
+top-level layout fields, including `style`, are rejected alongside `panels:`.
+
+These checks are strict for new renders. Previously accepted saved diagrams still load with
+their existing scenes, annotations, snapshots, and review submissions unchanged. Startup warns
+with the diagram id and validation issues; correct the source YAML before re-rendering.
+Other invalid saved documents are skipped with a warning instead of silently disappearing.
 
 ## Reviewing a diagram
 

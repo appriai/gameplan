@@ -1,6 +1,6 @@
 import dagre from "@dagrejs/dagre";
 import { groupId } from "../ids.js";
-import { clampLines, measureText } from "../text.js";
+import { clampLines, measureText, type Measured } from "../text.js";
 import { DIAGRAM_COLOR_STYLE, PALETTE, TYPE_SCALE, METRICS } from "../theme.js";
 import type { ExcalidrawElement } from "../excalidraw.js";
 import type { DiagramColor, FlowchartDiagram, FlowchartNode, FlowchartShape } from "../diagram.js";
@@ -15,6 +15,10 @@ const EDGE_LABEL_MAX_WIDTH = 120;
 const LABEL_CLEARANCE = 14;
 /** sideways drift (px) below which an edge counts as running straight down the flow */
 const STRAIGHT_RUN = 10;
+/** room between a reciprocal edge's outer lane and the two shapes it bypasses */
+const LOOP_LANE_CLEARANCE = 36;
+/** separate multiple reciprocal back edges without making a generic loop wider */
+const LOOP_LANE_STEP = 24;
 
 /**
  * Per-shape geometry. A label has to fit the shape's *inscribed* box, not its
@@ -66,7 +70,7 @@ const SHAPES: Record<
 
 interface NodePlan {
   node: FlowchartNode;
-  label: ReturnType<typeof clampLines>;
+  label: Measured;
   width: number;
   height: number;
 }
@@ -96,18 +100,16 @@ export function layoutFlowchart(
   const look = DIAGRAM_LOOKS[spec.style];
   const plans = new Map(spec.nodes.map((node) => [node.id, planNode(node)]));
 
-  const edgeLabels = new Map<number, ReturnType<typeof measureText>>();
+  const edgeLabels = new Map<number, Measured>();
   spec.edges.forEach((edge, i) => {
     if (edge.label) {
       edgeLabels.set(i, measureText(edge.label, TYPE_SCALE.small, EDGE_LABEL_MAX_WIDTH));
     }
   });
 
-  // Two passes. Forward edges are drawn straight with their label beside the
-  // line, so dagre mustn't reserve label slots for them — a slot is a dummy
-  // node the edge bends around, which turns a plain step-to-step arrow into a
-  // hook. Loops back up the chart are the exception: they follow dagre's
-  // routed path, and their label slot keeps it clear of the steps they pass.
+  // Two passes. Plain forward edges stay direct, but dagre owns the route for
+  // loops and parallel edges. The latter needs its bends: omitting them makes
+  // a multigraph look like one edge and stacks its labels in the same place.
   // Which edges loop back is only known once dagre has ranked the nodes.
   const firstPass = runDagre(spec, plans, edgeLabels, new Set());
   const backEdges = new Set<number>();
@@ -117,16 +119,27 @@ export function layoutFlowchart(
     const along = spec.direction === "TB" ? to.y - from.y : to.x - from.x;
     if (along <= 0) backEdges.add(i);
   });
-  const g = backEdges.size > 0 ? runDagre(spec, plans, edgeLabels, backEdges) : firstPass;
+  const endpointCounts = new Map<string, number>();
+  spec.edges.forEach((edge) => {
+    const key = `${edge.from}\u0000${edge.to}`;
+    endpointCounts.set(key, (endpointCounts.get(key) ?? 0) + 1);
+  });
+  const routedEdges = new Set(backEdges);
+  spec.edges.forEach((edge, i) => {
+    if ((endpointCounts.get(`${edge.from}\u0000${edge.to}`) ?? 0) > 1) routedEdges.add(i);
+  });
+  const g = routedEdges.size > 0 ? runDagre(spec, plans, edgeLabels, routedEdges) : firstPass;
 
   const graph = g.graph();
   const graphWidth = Math.ceil(graph.width ?? 0);
   const graphHeight = Math.ceil(graph.height ?? 0);
-  const width = Math.max(ctx.width, graphWidth + 2 * pad);
-  const height = graphHeight + 2 * pad;
-  const offsetX = ctx.x + pad + Math.max(0, (width - 2 * pad - graphWidth) / 2);
+  const manualBackRoutes = planReciprocalBackRoutes(spec, g, backEdges, endpointCounts, edgeLabels, graphWidth, graphHeight);
+  const contentWidth = manualBackRoutes.width;
+  const contentHeight = manualBackRoutes.height;
+  const width = Math.max(ctx.width, contentWidth + 2 * pad);
+  const height = contentHeight + 2 * pad;
+  const offsetX = ctx.x + pad + Math.max(0, (width - 2 * pad - contentWidth) / 2);
   const offsetY = ctx.y + pad;
-
   const shapes = new Map<string, ExcalidrawElement>();
   for (const plan of plans.values()) {
     const { node } = plan;
@@ -177,15 +190,20 @@ export function layoutFlowchart(
     const from = shapes.get(edge.from);
     const to = shapes.get(edge.to);
     if (!from || !to) return;
-    const back = backEdges.has(i);
+    const routed = routedEdges.has(i);
     const laid = g.edge(edge.from, edge.to, String(i)) as
       | { points?: { x: number; y: number }[]; x?: number; y?: number }
       | undefined;
-    // dagre's first and last points sit on the bounding boxes; the arrow
-    // finds its own ends on the real outline, so keep only the bends
-    const via = back
-      ? (laid?.points ?? []).slice(1, -1).map((p) => ({ x: offsetX + p.x, y: offsetY + p.y }))
-      : [];
+    const manual = manualBackRoutes.routes.get(i);
+    // dagre's first and last points sit on bounding boxes; the arrow finds
+    // its own ends on the real outline, so keep only the bends. Reciprocal
+    // pairs get a dedicated outer lane because dagre's reversed two-node edge
+    // can otherwise lie nearly on top of its forward counterpart.
+    const via = manual
+      ? manual.via.map((p) => ({ x: offsetX + p.x, y: offsetY + p.y }))
+      : routed
+        ? (laid?.points ?? []).slice(1, -1).map((p) => ({ x: offsetX + p.x, y: offsetY + p.y }))
+        : [];
 
     const arrow = builder.arrow({
       key: k(`edge::${i}::${edge.from}::${edge.to}`),
@@ -204,7 +222,11 @@ export function layoutFlowchart(
     if (!edge.label || !measured) return;
     let centerX: number;
     let centerY: number;
-    if (back && laid?.x !== undefined && laid.y !== undefined) {
+    if (manual?.labelCenter) {
+      centerX = offsetX + manual.labelCenter.x;
+      centerY = offsetY + manual.labelCenter.y;
+    } else if (routed && laid?.x !== undefined && laid.y !== undefined) {
+      // dagre reserved this label's slot on the routed polyline.
       centerX = offsetX + laid.x;
       centerY = offsetY + laid.y;
     } else {
@@ -248,10 +270,69 @@ export function layoutFlowchart(
   return { width, height };
 }
 
+interface ManualBackRoute {
+  via: { x: number; y: number }[];
+  labelCenter?: { x: number; y: number };
+}
+
+function planReciprocalBackRoutes(
+  spec: FlowchartDiagram,
+  g: dagre.graphlib.Graph,
+  backEdges: Set<number>,
+  endpointCounts: ReadonlyMap<string, number>,
+  edgeLabels: Map<number, Measured>,
+  graphWidth: number,
+  graphHeight: number,
+): { routes: Map<number, ManualBackRoute>; width: number; height: number } {
+  const routes = new Map<number, ManualBackRoute>();
+  let width = graphWidth;
+  let height = graphHeight;
+  let laneIndex = 0;
+
+  spec.edges.forEach((edge, i) => {
+    if (
+      !backEdges.has(i) ||
+      edge.from === edge.to ||
+      !endpointCounts.has(`${edge.to}\u0000${edge.from}`)
+    ) {
+      return;
+    }
+    const from = g.node(edge.from) as { x: number; y: number; width: number; height: number };
+    const to = g.node(edge.to) as { x: number; y: number; width: number; height: number };
+    const measured = edgeLabels.get(i);
+    const laneOffset = LOOP_LANE_CLEARANCE + laneIndex * LOOP_LANE_STEP;
+    laneIndex += 1;
+
+    if (spec.direction === "TB") {
+      const lane = Math.max(from.x + from.width / 2, to.x + to.width / 2) + laneOffset;
+      const labelCenter = measured
+        ? { x: lane + LABEL_CLEARANCE + measured.width / 2, y: (from.y + to.y) / 2 }
+        : undefined;
+      width = Math.max(width, lane + (measured ? LABEL_CLEARANCE + measured.width : 0));
+      routes.set(i, {
+        via: [{ x: lane, y: from.y }, { x: lane, y: to.y }],
+        labelCenter,
+      });
+    } else {
+      const lane = Math.max(from.y + from.height / 2, to.y + to.height / 2) + laneOffset;
+      const labelCenter = measured
+        ? { x: (from.x + to.x) / 2, y: lane + LABEL_CLEARANCE + measured.height / 2 }
+        : undefined;
+      height = Math.max(height, lane + (measured ? LABEL_CLEARANCE + measured.height : 0));
+      routes.set(i, {
+        via: [{ x: from.x, y: lane }, { x: to.x, y: lane }],
+        labelCenter,
+      });
+    }
+  });
+
+  return { routes, width, height };
+}
+
 function runDagre(
   spec: FlowchartDiagram,
   plans: Map<string, NodePlan>,
-  edgeLabels: Map<number, ReturnType<typeof measureText>>,
+  edgeLabels: Map<number, Measured>,
   labelled: Set<number>,
 ): dagre.graphlib.Graph {
   const g = new dagre.graphlib.Graph({ multigraph: true });

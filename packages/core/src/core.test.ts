@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 
 import { parseSpec, parseSpecYaml, SpecError } from "./spec.js";
 import { renderPlan, type Snapshot } from "./render.js";
+import { renderDiagram } from "./diagrams/render.js";
+import { parseDiagramYaml } from "./diagram.js";
 import { parseFeedback } from "./feedback.js";
 import { createIndexGenerator, elementId } from "./ids.js";
 import { measureLine, measureText, truncatePath, wrapText } from "./text.js";
@@ -681,5 +683,48 @@ describe("embedded plan diagrams", () => {
     expect(comment.intent).toBe("question");
     expect(comment.anchor.role).toBe("diagram-node");
     expect(comment.anchor.nodeId).toBe("request-path:limiter");
+  });
+
+  it("anchors a sticky dropped on a panel node with a panel:node id", () => {
+    const spec = parseDiagramYaml(
+      readFileSync(
+        fileURLToPath(new URL("../../../examples/checkout.diagram.yaml", import.meta.url)),
+        "utf8",
+      ),
+    );
+    const { scene, snapshot } = renderDiagram(spec, { now: FIXED_NOW });
+    const cloned = structuredClone(scene);
+    const node = cloned.elements.find(
+      (e) =>
+        e.customData?.gameplan?.role === "diagram-node" &&
+        e.customData.gameplan.nodeId === "architecture:api" &&
+        e.type === "rectangle",
+    )!;
+    cloned.elements.push(
+      annotate(cloned, {
+        id: "panel-note",
+        type: "text",
+        x: node.x + node.width / 2 - 5,
+        y: node.y + node.height / 2 - 5,
+        width: 10,
+        height: 10,
+        text: "should this be rate limited?",
+        originalText: "should this be rate limited?",
+        containerId: null,
+        fontSize: 16,
+        fontFamily: 1,
+        textAlign: "left",
+        verticalAlign: "top",
+        autoResize: false,
+        lineHeight: 1.25,
+        backgroundColor: PALETTE.bgYellow,
+      } as Partial<ExcalidrawElement> & { id: string }),
+    );
+
+    const comment = parseFeedback(cloned, snapshot).comments.find((c) =>
+      c.text.includes("rate limited"),
+    )!;
+    expect(comment.anchor.role).toBe("diagram-node");
+    expect(comment.anchor.nodeId).toBe("architecture:api");
   });
 });
