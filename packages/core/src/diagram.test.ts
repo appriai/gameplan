@@ -410,5 +410,57 @@ describe("multi-panel diagram", () => {
 
   it("leaves single-layout diagrams unchanged", () => {
     expect(loadGraph()).not.toHaveProperty("panels");
+    // no panel scoping leaks into the single-layout path: node ids stay bare,
+    // so annotations anchored before panels existed still resolve
+    const { snapshot } = renderDiagram(loadGraph(), { now: FIXED_NOW });
+    const spec = loadGraph();
+    if (spec.layout !== "graph") throw new Error("expected a graph example");
+    const nodeIds = new Set(
+      Object.values(snapshot.elements)
+        .filter((e) => e.role === "diagram-node")
+        .map((e) => e.nodeId),
+    );
+    expect(nodeIds).toEqual(new Set(spec.nodes.map((n) => n.id)));
+  });
+
+  it("rejects a top-level layout alongside panels instead of dropping it", () => {
+    expect(() =>
+      parseDiagramSpec({
+        id: "d",
+        title: "t",
+        layout: "graph",
+        nodes: [{ id: "a", label: "A" }],
+        panels: [{ id: "p", title: "P", layout: "graph", nodes: [{ id: "a", label: "A" }] }],
+      }),
+    ).toThrow(/"layout" cannot be combined with "panels"[\s\S]*"nodes" cannot be combined/);
+  });
+
+  it("rejects a revision set on a panel", () => {
+    expect(() =>
+      parseDiagramSpec({
+        id: "d",
+        title: "t",
+        panels: [
+          { id: "p", title: "P", revision: 3, layout: "graph", nodes: [{ id: "a", label: "A" }] },
+        ],
+      }),
+    ).toThrow(/panels\.0\.revision/);
+  });
+
+  it.each(["title", "note"])("reserves %s as a panel id", (id) => {
+    expect(() =>
+      parseDiagramSpec({
+        id: "d",
+        title: "t",
+        panels: [{ id, title: "P", layout: "graph", nodes: [{ id: "a", label: "A" }] }],
+      }),
+    ).toThrow(new RegExp(`"${id}" is reserved`));
+  });
+
+  it("rejects an empty panels list and a bad layout inside a panel", () => {
+    expect(() => parseDiagramSpec({ id: "d", title: "t", panels: [] })).toThrow(/panels/);
+    expect(() =>
+      parseDiagramSpec({ id: "d", title: "t", panels: [{ id: "p", title: "P", layout: "state" }] }),
+    ).toThrow(/panels\.0\.layout/);
   });
 });
