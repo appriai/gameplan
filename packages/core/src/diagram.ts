@@ -241,7 +241,7 @@ export function checkDiagramReferences(spec: LayoutDiagram | PlanDiagram): strin
 }
 
 /** Top-level fields that belong to a single layout, never to a panels diagram. */
-const LAYOUT_ONLY_FIELDS = ["layout", "direction", "nodes", "edges", "clusters", "actors", "messages"];
+const LAYOUT_ONLY_FIELDS = ["layout", "direction", "style", "nodes", "edges", "clusters", "actors", "messages"];
 
 /** Panel ids the diagram's own header already uses as feedback node ids. */
 const RESERVED_PANEL_IDS = new Set(["title", "note"]);

@@ -16,6 +16,7 @@ const legacyShapes = [
     layout: "graph", direction: "LR", nodes: [{ id: "ignored", label: "Ignored" }],
     edges: [], clusters: [], actors: [], messages: [],
   }, panel: {} },
+  { name: "style beside panels", top: { style: "clean" }, panel: {} },
   { name: "panel revision", top: {}, panel: { revision: 3 } },
   { name: "title panel id", top: {}, panel: { id: "title" } },
   { name: "note panel id", top: {}, panel: { id: "note" } },
